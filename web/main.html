@@ -1,26 +1,991 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" style="">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-    <title>Rust HTTP Server</title>
-
-    <meta
-      name="description"
-      content="A web application served by a Rust HTTP server."
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>JSON Form Editor</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
     />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --color-surface: #051424;
+        --color-surface-dim: #051424;
+        --color-surface-bright: #2c3a4c;
+        --color-surface-container-lowest: #010f1f;
+        --color-surface-container-low: #0d1c2d;
+        --color-surface-container: #122131;
+        --color-surface-container-high: #1c2b3c;
+        --color-surface-container-highest: #273647;
+        --color-surface-variant: #273647;
+        --color-on-surface: #d4e4fa;
+        --color-on-surface-variant: #c3c6d7;
+        --color-primary: #b4c5ff;
+        --color-on-primary: #002a78;
+        --color-primary-container: #2563eb;
+        --color-on-primary-container: #eeefff;
+        --color-outline: #8d90a0;
+        --color-outline-variant: #434655;
+        --color-error: #ffb4ab;
+        --color-on-error: #690005;
+        --color-background: #0f1115;
 
-    <link rel="icon" href="/public/web/favicon.svg" type="image/svg+xml" />
-    <link rel="alternate icon" href="/public/web/favicon.ico" />
-    <link rel="stylesheet" href="/web/main.css" />
+        --radius: 8px;
+        --sidebar-width: 200px;
+        --header-height: 48px;
+
+        --font-body: "Hanken Grotesk", sans-serif;
+        --font-label: "JetBrains Mono", monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background-color: var(--color-background);
+        color: var(--color-on-surface);
+        font-family: var(--font-body);
+        font-size: 13px;
+        line-height: 1.5;
+        display: flex;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      /* Typography */
+      h1 {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      p {
+        color: var(--color-on-surface-variant);
+        font-size: 13px;
+      }
+      label {
+        font-family: var(--font-label);
+        font-size: 11px;
+        color: var(--color-on-surface-variant);
+        display: block;
+        margin-bottom: 4px;
+        letter-spacing: 0.05em;
+      }
+
+      /* Layout */
+      .app-container {
+        display: flex;
+        flex: 1;
+        width: 100%;
+      }
+
+      /* Sidebar */
+      .sidebar {
+        width: var(--sidebar-width);
+        background-color: var(--color-surface-container-low);
+        border-right: 1px solid var(--color-outline-variant);
+        display: flex;
+        flex-direction: column;
+        transition: width 0.3s ease;
+        overflow: hidden;
+        z-index: 40;
+      }
+
+      .sidebar.collapsed {
+        width: 60px;
+      }
+
+      .sidebar-header {
+        height: var(--header-height);
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--color-outline-variant);
+      }
+
+      .sidebar-header .logo {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--color-primary);
+      }
+
+      .sidebar.collapsed .sidebar-header .logo {
+        font-size: 16px;
+      }
+
+      .sidebar-nav {
+        flex: 1;
+        padding: 16px 8px;
+        overflow-y: auto;
+      }
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 12px;
+        border-radius: var(--radius);
+        color: var(--color-on-surface-variant);
+        text-decoration: none;
+        margin-bottom: 4px;
+        transition: all 0.2s;
+        cursor: pointer;
+      }
+
+      .nav-item:hover {
+        background-color: var(--color-surface-variant);
+      }
+
+      .nav-item.active {
+        color: var(--color-primary);
+        background-color: rgba(37, 99, 235, 0.1);
+        border-left: 3px solid var(--color-primary);
+      }
+
+      .nav-item .material-symbols-outlined {
+        font-size: 18px;
+      }
+
+      .sidebar.collapsed .nav-item span:not(.material-symbols-outlined) {
+        display: none;
+      }
+
+      .btn-add-menu {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 8px;
+        margin-top: 16px;
+        background: transparent;
+        color: var(--color-on-surface);
+        border: 1px solid var(--color-outline-variant);
+        border-radius: var(--radius);
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: var(--font-label);
+        font-size: 11px;
+      }
+
+      .btn-add-menu:hover {
+        background-color: var(--color-surface-variant);
+        border-color: var(--color-outline);
+      }
+
+      .sidebar.collapsed .btn-add-menu span:not(.material-symbols-outlined) {
+        display: none;
+      }
+      .sidebar.collapsed .btn-add-menu {
+        padding: 8px 0;
+      }
+
+      .sidebar-footer {
+        padding: 8px;
+        border-top: 1px solid var(--color-outline-variant);
+      }
+
+      /* Main Content */
+      .main-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+
+      /* Header */
+      .header {
+        height: var(--header-height);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        background-color: var(--color-surface);
+        border-bottom: 1px solid var(--color-outline-variant);
+        position: sticky;
+        top: 0;
+        z-index: 30;
+      }
+
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .toggle-sidebar {
+        background: none;
+        border: none;
+        color: var(--color-on-surface-variant);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        padding: 4px;
+        border-radius: var(--radius);
+      }
+      .toggle-sidebar:hover {
+        background-color: var(--color-surface-variant);
+      }
+
+      .header-title {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--color-primary);
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      .header-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--color-on-surface-variant);
+        font-family: var(--font-label);
+        font-size: 11px;
+      }
+
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: var(--color-primary);
+      }
+
+      /* Canvas */
+      .canvas {
+        flex: 1;
+        padding: 24px;
+        overflow-y: auto;
+      }
+
+      .container {
+        max-width: 720px;
+        margin: 0 auto;
+      }
+
+      .header-section {
+        margin-bottom: 24px;
+      }
+
+      /* Form Fields */
+      .fields-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+
+      .field-item {
+        display: flex;
+        gap: 12px;
+        padding: 12px;
+        background-color: #1a1d23;
+        border: 1px solid var(--color-outline-variant);
+        border-radius: var(--radius);
+        transition: border-color 0.2s;
+      }
+
+      .field-item:hover {
+        border-color: rgba(180, 197, 255, 0.5); /* subtle primary */
+      }
+
+      .drag-handle {
+        color: var(--color-on-surface-variant);
+        cursor: grab;
+        opacity: 0.5;
+        display: flex;
+        align-items: center;
+      }
+      .field-item:hover .drag-handle {
+        opacity: 1;
+      }
+
+      .field-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .field-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      /* Inputs */
+      input[type="text"],
+      select {
+        width: 100%;
+        background-color: var(--color-background);
+        border: 1px solid var(--color-outline-variant);
+        color: var(--color-on-surface);
+        font-family: var(--font-body);
+        font-size: 13px;
+        border-radius: var(--radius);
+        padding: 6px 10px;
+        transition: all 0.2s;
+        outline: none;
+      }
+
+      select {
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' height='20' width='20' viewBox='0 0 24 24' fill='%238d90a0'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        padding-right: 32px;
+      }
+
+      input[type="text"]:focus,
+      select:focus {
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 1px var(--color-primary);
+      }
+
+      .btn-icon {
+        background: none;
+        border: none;
+        color: var(--color-on-surface-variant);
+        cursor: pointer;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        border-radius: var(--radius);
+      }
+      .btn-icon:hover {
+        color: var(--color-error);
+        background-color: rgba(147, 0, 10, 0.2);
+      }
+
+      /* Nested Object/Array styling */
+      .nested-container {
+        grid-column: 1 / -1;
+        padding: 12px;
+        background-color: rgba(255, 255, 255, 0.02);
+        border-left: 2px solid var(--color-outline-variant);
+        border-radius: 0 var(--radius) var(--radius) 0;
+        margin-top: 4px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      /* Add New Section */
+      .add-section {
+        border: 1px dashed var(--color-outline-variant);
+        padding: 16px;
+        border-radius: var(--radius);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background-color: rgba(18, 33, 49, 0.3);
+      }
+
+      .add-section-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--color-on-surface-variant);
+      }
+      .add-section-left .material-symbols-outlined {
+        color: var(--color-primary);
+        font-size: 20px;
+      }
+
+      .add-section-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-primary {
+        background-color: var(--color-primary-container);
+        color: var(--color-on-primary-container);
+        border: none;
+        padding: 6px 12px;
+        border-radius: var(--radius);
+        font-family: var(--font-label);
+        font-size: 11px;
+        cursor: pointer;
+        transition: opacity 0.2s;
+      }
+      .btn-primary:hover {
+        opacity: 0.9;
+      }
+
+      .btn-secondary {
+        background-color: transparent;
+        color: var(--color-on-surface);
+        border: 1px solid var(--color-outline-variant);
+        padding: 6px 16px;
+        border-radius: var(--radius);
+        font-family: var(--font-label);
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .btn-secondary:hover {
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+      }
+
+      /* Action Bar */
+      .action-bar {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        padding-top: 16px;
+        border-top: 1px solid var(--color-outline-variant);
+        margin-top: 24px;
+      }
+
+      .btn-save {
+        background-color: var(--color-primary);
+        color: var(--color-on-primary);
+        border: none;
+        padding: 6px 16px;
+        border-radius: var(--radius);
+        font-family: var(--font-label);
+        font-size: 11px;
+        cursor: pointer;
+        transition: opacity 0.2s;
+      }
+      .btn-save:hover {
+        opacity: 0.9;
+      }
+    </style>
   </head>
-
   <body>
-    <main>
-      <h1>Rust HTTP server is running</h1>
-    </main>
+    <div class="app-container">
+      <!-- Sidebar -->
+      <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <span class="logo">CSM</span>
+        </div>
+        <div class="sidebar-nav">
+          <a class="nav-item" href="#">
+            <span class="material-symbols-outlined">article</span>
+            <span class="">Posts</span>
+          </a>
+          <a class="nav-item active" href="#">
+            <span class="material-symbols-outlined">description</span>
+            <span class="">Pages</span>
+          </a>
+          <button class="btn-add-menu justify-start px-3 flex">
+            <span class="material-symbols-outlined" style="font-size: 16px"
+              >add</span
+            >
+            <span class="">Add</span>
+          </button>
+        </div>
+        <div class="sidebar-footer">
+          <a class="nav-item" href="#">
+            <span class="material-symbols-outlined">settings</span>
+            <span class="">Settings</span>
+          </a>
+        </div>
+      </nav>
+      <!-- Main Content Area -->
+      <div class="main-content">
+        <!-- Top App Bar -->
+        <header class="header">
+          <div class="header-left">
+            <button class="toggle-sidebar" id="toggle-sidebar">
+              <span class="material-symbols-outlined">menu</span>
+            </button>
+            <div class="header-title">
+              <span class="">WSS Index</span>
+              <span class="material-symbols-outlined" style="font-size: 20px"
+                >arrow_drop_down</span
+              >
+            </div>
+          </div>
+          <div class="header-status">
+            <span class="status-dot"></span>
+            <span class="">status: up to date</span>
+          </div>
+        </header>
+        <!-- Canvas -->
+        <main class="canvas">
+          <div class="container">
+            <div class="header-section">
+              <h1 class="">Form Editor</h1>
+              <p class="">Configure the schema for your page.</p>
+            </div>
+            <!-- Form Fields List -->
+            <div class="fields-list">
+              <!-- Item 1 (String) -->
 
-    <script type="module" src="/web/main.js"></script>
+              <!-- Item 2 (Object - Recursive) -->
+
+              <!-- Item 3 (Number) -->
+              <div class="field-item items-start">
+                <div
+                  class="drag-handle"
+                  style="
+                    margin-top: 4px;
+                    display: flex;
+                    align-items: flex-start;
+                    width: 20px;
+                    justify-content: center;
+                  "
+                >
+                  <span class="material-symbols-outlined">drag_indicator</span>
+                </div>
+                <div class="field-content">
+                  <div class="field-row" style="grid-template-columns: 1fr 1fr">
+                    <div>
+                      <input
+                        type="text"
+                        value="Metadata"
+                        style="
+                          font-weight: 600;
+                          font-size: 14px;
+                          background: transparent;
+                          border: none;
+                          padding: 0;
+                          color: var(--color-on-surface);
+                          width: auto;
+                        "
+                      />
+                    </div>
+                    <div style="display: flex; justify-content: flex-end">
+                      <select
+                        style="
+                          width: auto;
+                          background-color: transparent;
+                          border-width: medium;
+                          border-style: none;
+                          border-color: currentcolor;
+                          border-image: initial;
+                          padding: 0px 32px 0px 0px;
+                          color: var(--color-on-surface-variant);
+                          font-size: 12px;
+                          cursor: pointer;
+                          text-align: right;
+                        "
+                        class=""
+                      >
+                        <option>String</option>
+                        <option>Number</option>
+                        <option>Boolean</option>
+                        <option selected="">Object</option>
+                        <option>Array</option>
+                      </select>
+                    </div>
+                    <div style="grid-column: 1 / -1" class="nested-container">
+                      <div
+                        class="field-item items-start"
+                        style="background: rgba(255, 255, 255, 0.03)"
+                      >
+                        <div
+                          class="drag-handle"
+                          style="
+                            margin-top: 4px;
+                            display: flex;
+                            align-items: flex-start;
+                            width: 20px;
+                            justify-content: center;
+                          "
+                        >
+                          <span class="material-symbols-outlined"
+                            >drag_indicator</span
+                          >
+                        </div>
+                        <div class="field-content">
+                          <div class="field-row">
+                            <div>
+                              <input
+                                type="text"
+                                value="IsActive"
+                                style="
+                                  font-weight: 600;
+                                  font-size: 14px;
+                                  background: transparent;
+                                  border: none;
+                                  padding: 0;
+                                  color: var(--color-on-surface);
+                                  width: auto;
+                                "
+                              />
+                            </div>
+                            <div
+                              style="display: flex; justify-content: flex-end"
+                            >
+                              <select
+                                style="
+                                  width: auto;
+                                  background-color: transparent;
+                                  border-width: medium;
+                                  border-style: none;
+                                  border-color: currentcolor;
+                                  border-image: initial;
+                                  padding: 0px 32px 0px 0px;
+                                  color: var(--color-on-surface-variant);
+                                  font-size: 12px;
+                                  cursor: pointer;
+                                  text-align: right;
+                                "
+                                class=""
+                              >
+                                <option>String</option>
+                                <option>Number</option>
+                                <option selected="">Boolean</option>
+                                <option>Object</option>
+                                <option>Array</option>
+                              </select>
+                            </div>
+                            <div style="grid-column: 1 / -1; margin-top: 8px">
+                              <select
+                                style="
+                                  width: 100%;
+                                  background-color: var(--color-background);
+                                  border: 1px solid var(--color-outline-variant);
+                                  color: var(--color-on-surface);
+                                  font-family: var(--font-body);
+                                  font-size: 13px;
+                                  border-radius: var(--radius);
+                                  padding: 6px 10px;
+                                  outline: none;
+                                  appearance: none;
+                                  background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' height='20' width='20' viewBox='0 0 24 24' fill='%238d90a0'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E&quot;);
+                                  background-repeat: no-repeat;
+                                  background-position: right 8px center;
+                                  cursor: pointer;
+                                "
+                                class=""
+                              >
+                                <option selected="">True</option>
+                                <option>False</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          class="btn-icon"
+                          style="
+                            font-family: var(--font-label);
+                            font-size: 18px;
+                            padding: 6px 10px;
+                            align-self: flex-start;
+                            margin-top: 2px;
+                            line-height: 1;
+                          "
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <div
+                        class="add-section"
+                        style="
+                          padding: 8px;
+                          border-style: dotted;
+                          background: transparent;
+                        "
+                      >
+                        <div class="add-section-left" style="font-size: 12px">
+                          <span
+                            class="material-symbols-outlined"
+                            style="font-size: 16px"
+                            >add_circle</span
+                          >Add property
+                        </div>
+                        <div class="add-section-right">
+                          <select
+                            style="
+                              width: auto;
+                              background-color: transparent;
+                              border-width: medium;
+                              border-style: none;
+                              border-color: currentcolor;
+                              border-image: initial;
+                              padding: 0px 32px 0px 0px;
+                              color: var(--color-on-surface-variant);
+                              font-size: 12px;
+                              cursor: pointer;
+                              text-align: right;
+                            "
+                            class=""
+                          >
+                            <option>String</option>
+                            <option>Number</option>
+                            <option>Boolean</option></select
+                          ><button class="btn-primary" style="padding: 2px 8px">
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  class="btn-icon"
+                  style="
+                    font-family: var(--font-label);
+                    font-size: 18px;
+                    padding: 6px 10px;
+                    align-self: flex-start;
+                    margin-top: 2px;
+                    line-height: 1;
+                  "
+                >
+                  ×
+                </button>
+              </div>
+              <div class="field-item items-start">
+                <div
+                  class="drag-handle"
+                  style="
+                    margin-top: 4px;
+                    display: flex;
+                    align-items: flex-start;
+                    width: 20px;
+                    justify-content: center;
+                  "
+                >
+                  <span class="material-symbols-outlined">drag_indicator</span>
+                </div>
+                <div class="field-content">
+                  <div class="field-row" style="grid-template-columns: 1fr 1fr">
+                    <div class="">
+                      <input
+                        type="text"
+                        value="Age"
+                        style="
+                          font-weight: 600;
+                          font-size: 14px;
+                          background: transparent;
+                          border-width: medium;
+                          border-style: none;
+                          border-color: currentcolor;
+                          border-image: initial;
+                          padding: 0px;
+                          color: var(--color-on-surface);
+                          cursor: text;
+                          width: auto;
+                        "
+                        class=""
+                        placeholder="Hello"
+                      />
+                    </div>
+                    <div class="">
+                      <div
+                        style="display: flex; justify-content: flex-end"
+                        class=""
+                      >
+                        <select
+                          style="
+                            width: auto;
+                            background-color: transparent;
+                            border-width: medium;
+                            border-style: none;
+                            border-color: currentcolor;
+                            border-image: initial;
+                            padding: 0px 32px 0px 0px;
+                            color: var(--color-on-surface-variant);
+                            font-size: 12px;
+                            cursor: pointer;
+                            text-align: right;
+                          "
+                          class=""
+                        >
+                          <option class="">String</option>
+                          <option selected="" class="">Number</option>
+                          <option class="">Boolean</option>
+                          <option class="">Object</option>
+                          <option class="">Array</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style="grid-column: 1 / -1; margin-top: 12px" class="">
+                      <textarea
+                        style="
+                          width: 100%;
+                          background-color: var(--color-background);
+                          border: 1px solid var(--color-outline-variant);
+                          color: var(--color-on-surface);
+                          font-family: var(--font-body);
+                          font-size: 13px;
+                          border-radius: var(--radius);
+                          padding: 6px 10px;
+                          outline: none;
+                          min-height: 80px;
+                          resize: vertical;
+                        "
+                        class=""
+                        placeholder="World"
+                      >
+0</textarea
+                      >
+                    </div>
+                  </div>
+                </div>
+                <button
+                  class="btn-icon"
+                  style="
+                    font-family: var(--font-label);
+                    font-size: 18px;
+                    padding: 6px 10px;
+                    align-self: flex-start;
+                    margin-top: 2px;
+                    line-height: 1;
+                  "
+                >
+                  ×
+                </button>
+              </div>
+              <div class="field-item items-start">
+                <div
+                  class="drag-handle"
+                  style="
+                    margin-top: 4px;
+                    display: flex;
+                    align-items: flex-start;
+                    width: 20px;
+                    justify-content: center;
+                  "
+                >
+                  <span class="material-symbols-outlined">drag_indicator</span>
+                </div>
+                <div class="field-content">
+                  <div class="field-row" style="grid-template-columns: 1fr 1fr">
+                    <div class="">
+                      <input
+                        type="text"
+                        value="Age"
+                        style="
+                          font-weight: 600;
+                          font-size: 14px;
+                          background: transparent;
+                          border: none;
+                          padding: 0px;
+                          color: var(--color-on-surface);
+                          cursor: text;
+                          width: auto;
+                        "
+                        class=""
+                      />
+                    </div>
+                    <div class="">
+                      <div
+                        style="display: flex; justify-content: flex-end"
+                        class=""
+                      >
+                        <select
+                          style="
+                            width: auto;
+                            background-color: transparent;
+                            border-width: medium;
+                            border-style: none;
+                            border-color: currentcolor;
+                            border-image: initial;
+                            padding: 0px 32px 0px 0px;
+                            color: var(--color-on-surface-variant);
+                            font-size: 12px;
+                            cursor: pointer;
+                            text-align: right;
+                          "
+                          class=""
+                        >
+                          <option>String</option>
+                          <option selected="">Number</option>
+                          <option>Boolean</option>
+                          <option>Object</option>
+                          <option>Array</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style="grid-column: 1 / -1; margin-top: 12px" class="">
+                      <input
+                        type="number"
+                        value="30"
+                        style="
+                          width: 100%;
+                          background-color: var(--color-background);
+                          border: 1px solid var(--color-outline-variant);
+                          color: var(--color-on-surface);
+                          font-family: var(--font-body);
+                          font-size: 13px;
+                          border-radius: var(--radius);
+                          padding: 6px 10px;
+                          outline: none;
+                        "
+                      />
+                    </div>
+                  </div>
+                </div>
+                <button
+                  class="btn-icon"
+                  style="
+                    font-family: var(--font-label);
+                    font-size: 18px;
+                    padding: 6px 10px;
+                    align-self: flex-start;
+                    margin-top: 2px;
+                    line-height: 1;
+                  "
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <!-- Add New Field Action -->
+            <div class="add-section">
+              <div class="add-section-left">
+                <span class="material-symbols-outlined">add_circle</span>
+                <span class="">Add property</span>
+              </div>
+              <div class="add-section-right">
+                <select
+                  style="
+                    width: auto;
+                    background-color: transparent;
+                    border-width: medium;
+                    border-style: none;
+                    border-color: currentcolor;
+                    border-image: initial;
+                    padding: 0px 32px 0px 0px;
+                    color: var(--color-on-surface-variant);
+                    font-size: 12px;
+                    cursor: pointer;
+                    text-align: right;
+                  "
+                  class=""
+                >
+                  <option class="">String</option>
+                  <option class="">Number</option>
+                  <option class="">Boolean</option>
+                  <option class="">Object</option>
+                  <option class="">Array</option>
+                </select>
+                <button class="btn-primary">Add</button>
+              </div>
+            </div>
+            <!-- Action Bar -->
+            <div class="action-bar">
+              <button class="btn-secondary">Cancel</button>
+              <button class="btn-save">Save</button>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+    <script>
+      const toggleBtn = document.getElementById("toggle-sidebar");
+      const sidebar = document.getElementById("sidebar");
+
+      toggleBtn.addEventListener("click", () => {
+        sidebar.classList.toggle("collapsed");
+      });
+    </script>
   </body>
 </html>

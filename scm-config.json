@@ -1,0 +1,13 @@
+{
+  "config_version": 1,
+  "projects_dir": "projects",
+  "projects": [
+    {
+      "id": "wss-index",
+      "name": "WSS Index",
+      "repo": "https://github.com/whysosergious/wss-index.git",
+      "branch": "main",
+      "content_dir": "content"
+    }
+  ]
+}
