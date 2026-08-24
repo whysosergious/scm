@@ -604,8 +604,24 @@ input[type="text"].title-input.invalid {
   color: var(--color-primary);
   background-color: var(--color-surface-variant);
 }
-.prop-row.collapsed > .chevron-btn {
+.prop-row.collapsed .chevron-btn {
   transform: rotate(-90deg);
+}
+
+/* Right-side action cluster: clone · collapse · delete */
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* String values: resizable multi-line text field */
+.prop-body textarea.value-input {
+  min-height: 52px;
+  resize: vertical;
+  line-height: 1.5;
 }
 .prop-row.collapsed .prop-body {
   display: none;

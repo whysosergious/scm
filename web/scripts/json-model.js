@@ -403,6 +403,33 @@ export function removeNode(root, node) {
   return true;
 }
 
+function deepClone(node) {
+  const copy = makeNode({
+    key: node.key,
+    type: node.type,
+    value: node.value,
+  });
+  copy.children = node.children.map(deepClone);
+  return copy;
+}
+
+/**
+ * Deep-copy `node` and insert the copy directly after it in the same parent
+ * (spec_json_edit.md §7). Object copies get a unique key derived from the
+ * original (`name` → `name2`); array copies need none. Returns the new node
+ * or null when `node` has no parent (root).
+ */
+export function cloneNode(root, node) {
+  const parent = findParent(root, node.id);
+  if (!parent) return null;
+  const copy = deepClone(node);
+  if (parent.type === 'object') {
+    copy.key = uniqueKey(parent, node.key || 'copy');
+  }
+  parent.children.splice(parent.children.indexOf(node) + 1, 0, copy);
+  return copy;
+}
+
 /** Append a fresh child of `type` to a container; returns the child. */
 export function addChild(parent, type = 'string', key = undefined) {
   const child = makeNode({ key: '', type: 'null' });

@@ -115,6 +115,23 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
       '×',
     );
 
+    const cloneBtn = el(
+      'button',
+      {
+        class: 'btn-icon clone-btn',
+        title: 'Clone',
+        onclick: () => {
+          const copy = model.cloneNode(api.tree, node);
+          if (copy) {
+            // Focus the copy's name for immediate rename (object copies).
+            if (parent.type === 'object') api.focusNewId = copy.id;
+            rerender();
+          }
+        },
+      },
+      icon('content_copy', 16),
+    );
+
     const chevron = el(
       'button',
       {
@@ -127,10 +144,12 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
       icon('expand_more', 18),
     );
 
+    const actions = el('div', { class: 'row-actions' }, cloneBtn, chevron, delBtn);
+
     // prop-body is a DIRECT child of the row (sibling of field-content) so
     // nested containers and value inputs span the row's full width; the row
     // uses flex-wrap to place it on its own line beneath the head.
-    row.append(handle, chevron, content, delBtn, valueArea(node));
+    row.append(handle, content, actions, valueArea(node));
 
     enableDrag({
       handle,
@@ -308,17 +327,18 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
   }
 
   function stringInput(node) {
-    const input = el('input', {
-      type: 'text',
-      class: 'value-input',
-      value: node.value ?? '',
-      autocomplete: 'off',
+    const ta = el('textarea', {
+      class: 'value-input string-input',
+      spellcheck: 'false',
+      rows: '2',
+      placeholder: '',
     });
-    input.addEventListener('input', () => {
-      node.value = input.value;
+    ta.value = node.value ?? '';
+    ta.addEventListener('input', () => {
+      node.value = ta.value;
       onDirty?.();
     });
-    return input;
+    return ta;
   }
 
   function numberInput(node) {

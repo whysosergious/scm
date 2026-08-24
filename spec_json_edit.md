@@ -70,38 +70,47 @@ language of the original control-panel sketch (`.field-item`,
 `.drag-handle`, `.nested-container`, `.add-section`):
 
 ```
-[drag handle] [chevron] [name/title] [type ▾]              [×]
+[drag handle] [name/title] [type ▾]        [clone] [chevron] [×]
               [value input | nested children …]
               [add property / add entry]
 ```
 
 - **Drag handle** (`drag_indicator`): initiates drag-and-drop (§8). Not a
   click target for anything else.
-- **Chevron**: expands/collapses the row (§6).
 - **Name**: an `<input>` permanently present but styled as a plain bold title
-  (transparent background, no border). Hover/focus reveals that it is editable.
-  Rename commits on Enter or blur; duplicates/empty names are rejected with an
-  inline highlight and the previous key is restored on Escape.
+  (transparent background, no border). It reads as text; the editing
+  affordance appears only on focus. Rename commits on Enter or blur;
+  duplicates/empty names are rejected with an inline highlight and the
+  previous key is restored on Escape.
 - **Array entries** have no name input. They show an immutable index badge
-  `[0]`, `[1]`, … Badges re-index automatically from list order after any
-  add/delete/move.
+  `[0]`, `[1]`, … as plain text. Badges re-index automatically from list
+  order after any add/delete/clone/move.
 - **Type selector**: renders as plain text (current type) with a small
   `arrow_drop_down` glyph — visually matching the header project selector.
   Clicking opens a menu with exactly: String, Number, Boolean, Object, Array,
   Null. Choosing converts the value per §9 and re-renders.
+- **Right-side action cluster**, in order: **Clone** (`content_copy` icon),
+  **chevron** (expand/collapse, §6), **delete `×`**.
 - **Delete `×`**: removes the property/entry from its parent immediately
   (no confirm dialog; Cancel restores the file from disk state).
+- **Clone**: deep-copies the property/entry and inserts the copy directly
+  below the original in the same parent. Copies get fresh node ids; object
+  copies receive a unique key derived from the original (`name` → `name2`)
+  and are focused for immediate rename; array copies need no key.
 
 ### Value inputs (expanded rows)
 
 | Type | Control |
 |---|---|
-| String | single-line text field |
+| String | resizable multi-line text field (textarea, vertical resize) |
 | Number | `<input type="number" step="any">` (floats/exponents allowed) |
 | Boolean | toggle switch |
 | Null | disabled note reading `null` |
 | Object | nested container listing child rows recursively + "Add property" |
 | Array | nested container listing entry rows recursively + "Add entry" |
+
+Value areas are direct children of the row element so nested containers and
+inputs span the full width of the row, not just the head columns.
 
 Typing in a value control updates the model directly and marks the document
 dirty without re-rendering (keeps focus/IME behavior intact).
@@ -128,13 +137,15 @@ dirty without re-rendering (keeps focus/IME behavior intact).
   reloaded or re-parsed from the JSON tab.
 - Newly added nodes render expanded with their name input focused (objects).
 
-## 7. Addition & deletion
+## 7. Addition, cloning & deletion
 
 - Each expanded object offers "Add property" (`.add-section` style); each
   expanded array offers "Add entry". A small inline type selector accompanies
   the add action, mirroring the sketch; defaults to String.
 - New object properties get a unique generated name (`property`, `property2`,
   …) and are focused for immediate renaming.
+- **Cloning** (§4): the copy appears directly beneath the original with a
+  unique derived key for objects; descendants are deep-copied with fresh ids.
 - Deletion via the row's `×` updates indices/counters everywhere.
 
 ## 8. Drag & drop sorting
@@ -190,13 +201,16 @@ the JSON tab always shows the resulting document before saving.
    or blur commits; duplicate/empty renames are rejected inline.
 3. The type control reads as text with a dropdown affordance; its menu offers
    exactly String, Number, Boolean, Object, Array, Null.
-4. String/number/boolean/null values render text field / number input /
-   toggle / disabled note respectively, on a row beneath the head row.
+4. String/number/boolean/null values render a resizable text field / number
+   input / toggle / disabled note respectively, on a full-width row beneath
+   the head row.
 5. Object/array values render nested rows recursively plus an add button;
    array entries use immutable `[n]` badges that re-index automatically.
-6. Any row collapses via chevron to one head row; collapsed nestables show
-   "(n items)".
-7. Every row has a functional delete `×`; deletion re-indexes arrays.
+6. Any row collapses via the chevron (right-side action cluster) to one head
+   row; collapsed nestables show "(n items)".
+7. Every row has functional Clone and delete `×` buttons; cloning inserts a
+   deep copy directly beneath the original (unique key for objects);
+   deletion re-indexes arrays.
 8. Rows are sortable by dragging their handle, including into other expanded
    containers; cycles are impossible; animations play (unless reduced motion).
 9. Dropping named properties into arrays drops the name; pulling entries into
