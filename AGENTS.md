@@ -4,19 +4,19 @@
 
 SCM ("Static Content Manager"): a local Actix Web + Tokio server for managing JSON content of static websites via Git. `spec.md` is the authoritative product spec — read it before adding features. The crate is still named `wss_serve` in `Cargo.toml` (legacy); don't rename it unprompted. `README.md` is empty.
 
-Current state: only the HTTP skeleton exists (`src/main.rs`, `src/http/routes.rs`). The modules sketched in spec.md §4 (`config.rs`, `project.rs`, `content.rs`, `git.rs`) do not exist yet; no code reads `scm-config.json` yet.
+Current state: v1 backend and frontend are implemented per `TODO.md` (all phases). Backend modules: `error.rs` (`ScmError`, category + status → JSON error shape), `paths.rs` (path-safety helpers, unit-tested), `config.rs` (load/validate/atomic-save `scm-config.json`, unknown keys preserved via `#[serde(flatten)]`), `git.rs` (git CLI wrapper over `tokio::process`), `project.rs` (clone-on-demand checkout lifecycle + verification), `content.rs` (direct-children `.json` discovery/load/save), `setup.rs` (`AppState`: `Arc<RwLock<AppConfig>>` — no actors). API lives in `src/http/api.rs`; frontend is decomposed under `web/{styles,scripts}` with `scripts/main.js` booting a small pub/sub store (`state.js`) + fetch layer (`api.js`). The legacy `/project/*` oxc-transpile route and its deps were removed (owner-approved).
 
 ## Commands
 
 - Copy `.env.template` to `.env` before running (sets `HOST=127.0.0.1`, `PORT=8080`).
-- `cargo run` from the repo root. Paths are resolved relative to CWD: dotenv loads `./.env`, and the server reads `./web/` and `./project/` — running from another directory breaks routing silently.
-- Verification is `cargo check` (fast) or `cargo build`. No tests, clippy/format config, pre-commit hooks, or CI exist.
+- `cargo run` from the repo root. Paths are resolved relative to CWD: dotenv loads `./.env`, the server reads `./web/`, `./scm-config.json` and `projects_dir` from it — running from another directory breaks routing silently.
+- Verification: `cargo check` (fast), `cargo build`, and `cargo test` (unit tests in `paths.rs`, `config.rs`, `git.rs`, `http/api.rs`; git tests drive throwaway bare repos in `/tmp`).
 
 ## Routes and runtime behavior
 
-- `GET /` serves `web/main.html`; `GET /web/*` serves static files from `web/`.
-- `GET /project/{path}` serves files under `./project/` — note singular, distinct from `projects_dir: "projects"` in `scm-config.json`.
-- Under `/project/`, `.ts`/`.tsx`/`.jsx` files are transpiled to JS on every request with the embedded oxc crates (parse → semantic → transform → codegen). Parse/semantic/transform errors are only printed to stderr — broken source still returns 200 with whatever was emitted. No watcher/build step despite `notify` being a dependency.
+- `GET /` serves `web/index.html`; `GET /web/*` serves static files from `web/`.
+- JSON API under `/api`: config get/put; projects list/import/delete; `{id}/checkout`, `{id}/ensure-content-dir`, `{id}/content` (+`/{name}` get/put), `{id}/git/status`, `{id}/publish`. Errors use `{"error":{category,message,detail}}`; publish returns HTTP 200 with a discriminated `outcome` field covering spec §11 cases.
+- Publishing stages only the configured content dir; local content is never reverted on failure.
 - `main.rs` force-sets `RUST_LOG=info` after `dotenv()`, overriding anything set in `.env`.
 
 ## Hard constraints from spec.md

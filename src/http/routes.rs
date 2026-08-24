@@ -1,140 +1,35 @@
-use actix_web::{get, web, HttpResponse, Responder, Result};
-use mime_guess::from_path;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use crate::http::api;
+use actix_files::Files;
+use actix_web::{get, web, HttpResponse, Responder};
 
-use oxc_allocator::Allocator;
-use oxc_codegen::{Codegen, CodegenOptions};
-use oxc_parser::Parser;
-use oxc_semantic::SemanticBuilder;
-use oxc_span::SourceType;
-use oxc_transformer::{TransformOptions, Transformer};
-
-const PROJECT_ROOT: &str = "project";
-
-// ================== BASIC ROUTES ==================
+// ================== STATIC ROUTES ==================
 
 #[get("/")]
 async fn index() -> impl Responder {
-    match fs::read_to_string("web/main.html") {
+    match tokio::fs::read_to_string("web/index.html").await {
         Ok(html) => HttpResponse::Ok().content_type("text/html").body(html),
-        Err(_) => HttpResponse::InternalServerError().body("Could not load main.html"),
+        Err(_) => HttpResponse::InternalServerError().body("Could not load index.html"),
     }
 }
 
-#[get("/project/{filename:.*}")]
-async fn project(filename: web::Path<String>) -> Result<HttpResponse> {
-    let mut path = PathBuf::from(PROJECT_ROOT).join(filename.as_str());
-
-    if path.is_dir() {
-        if let Some(index_path) = find_preferred_index(&path) {
-            path = index_path;
-        } else {
-            return Ok(
-                HttpResponse::NotFound().body(format!("No index file in dir: {}", path.display()))
-            );
-        }
-    }
-
-    if !path.exists() {
-        return Ok(HttpResponse::NotFound().body(format!("File not found: {}", path.display())));
-    }
-
-    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-
-    match ext {
-        "ts" | "tsx" | "jsx" => {
-            let source = fs::read_to_string(&path)?;
-            let js = transpile_ts_to_js(&source, &path)?;
-            Ok(HttpResponse::Ok()
-                .content_type("application/javascript")
-                .body(js))
-        }
-        "js" => {
-            let source = fs::read_to_string(&path)?;
-            Ok(HttpResponse::Ok()
-                .content_type("application/javascript")
-                .body(source))
-        }
-        "html" | "htm" => {
-            let content = fs::read_to_string(&path)?;
-
-            Ok(HttpResponse::Ok().content_type("text/html").body(content))
-        }
-        _ => {
-            let content = fs::read(&path)?;
-            let mime_type = from_path(&path).first_or_text_plain();
-            Ok(HttpResponse::Ok()
-                .content_type(mime_type.as_ref())
-                .body(content))
-        }
-    }
-}
-
-fn find_preferred_index(dir: &Path) -> Option<PathBuf> {
-    let candidates = ["main.html", "main.htm", "index.html", "index.htm"];
-
-    for candidate in candidates {
-        let mut candidate_path = dir.to_path_buf();
-        candidate_path.push(candidate);
-        if candidate_path.exists() {
-            return Some(candidate_path);
-        }
-    }
-    None
-}
-
-fn transpile_ts_to_js(source: &str, path: &PathBuf) -> Result<String> {
-    let allocator = Allocator::default();
-    let source_type = SourceType::from_path(path).unwrap_or_else(|_| SourceType::ts());
-
-    // 1. Parse
-    let parse_ret = Parser::new(&allocator, source, source_type).parse();
-
-    if !parse_ret.errors.is_empty() {
-        eprintln!("[OXC] Parse errors in {}:", path.display());
-        for err in &parse_ret.errors {
-            eprintln!("{:?}", err);
-        }
-    }
-
-    let mut program = parse_ret.program;
-
-    // 2. Semantic info (needed by transformer)
-    let semantic_ret = SemanticBuilder::new()
-        .with_excess_capacity(2.0)
-        .build(&program);
-
-    if !semantic_ret.errors.is_empty() {
-        eprintln!("[OXC] Semantic errors in {}:", path.display());
-        for err in &semantic_ret.errors {
-            eprintln!("{:?}", err);
-        }
-    }
-
-    let scoping = semantic_ret.semantic.into_scoping();
-
-    // 3. Transform (enable TS/JSX; target esnext by default)
-    let options = TransformOptions::enable_all();
-    // you can tweak options.typescript / jsx / env here if you want
-
-    let transform_ret = Transformer::new(&allocator, path.as_path(), &options)
-        .build_with_scoping(scoping, &mut program);
-
-    if !transform_ret.errors.is_empty() {
-        eprintln!("[OXC] Transform errors in {}:", path.display());
-        for err in &transform_ret.errors {
-            eprintln!("{:?}", err);
-        }
-    }
-
-    // 4. Emit JS
-    let js = Codegen::new()
-        .with_options(CodegenOptions::default())
-        .build(&program)
-        .code;
-
-    Ok(js)
+/// Register every service: static control panel + JSON API.
+pub fn configure(cfg: &mut web::ServiceConfig) {
+    cfg.service(Files::new("/web", "./web").index_file("index.html"))
+        .service(index)
+        .service(
+            web::scope("/api")
+                .service(api::get_config)
+                .service(api::put_config)
+                .service(api::list_projects)
+                .service(api::import_project)
+                .service(api::delete_project)
+                .service(api::ensure_checkout)
+                .service(api::create_content_dir)
+                .service(api::list_content)
+                .service(api::create_content_file)
+                .service(api::get_content_file)
+                .service(api::put_content_file)
+                .service(api::git_status)
+                .service(api::publish),
+        );
 }

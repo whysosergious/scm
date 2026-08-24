@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>SCM — Static Content Manager</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/web/styles/base.css" />
+    <link rel="stylesheet" href="/web/styles/layout.css" />
+    <link rel="stylesheet" href="/web/styles/components.css" />
+    <script type="module" src="/web/scripts/main.js"></script>
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- Sidebar -->
+      <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <span class="logo">SCM</span>
+        </div>
+        <div class="sidebar-nav" id="content-nav"></div>
+        <div class="sidebar-footer">
+          <button class="btn-add-menu" id="add-file-btn">
+            <span class="material-symbols-outlined" style="font-size: 16px">add</span>
+            <span>New JSON file</span>
+          </button>
+          <a class="nav-item" href="#" id="nav-settings">
+            <span class="material-symbols-outlined">settings</span>
+            <span>Settings</span>
+          </a>
+        </div>
+      </nav>
+
+      <!-- Main Content Area -->
+      <div class="main-content">
+        <!-- Top App Bar -->
+        <header class="header">
+          <div class="header-left">
+            <button class="toggle-sidebar" id="toggle-sidebar">
+              <span class="material-symbols-outlined">menu</span>
+            </button>
+            <div class="header-title" id="header-title"></div>
+          </div>
+          <div class="header-status" id="header-status"></div>
+        </header>
+
+        <!-- Canvas -->
+        <main class="canvas">
+          <div class="container" id="view-root"></div>
+        </main>
+      </div>
+    </div>
+
+    <!-- Overlays -->
+    <div id="modal-root"></div>
+    <div id="toast-root" class="toast-stack"></div>
+  </body>
+</html>
