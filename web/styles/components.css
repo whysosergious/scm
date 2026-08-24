@@ -515,9 +515,11 @@ select:focus {
   color: var(--color-primary);
 }
 
-/* Property rows */
+/* Property rows: head line (handle/chevron/content/delete) + full-width
+   prop-body that wraps beneath it. */
 .prop-row {
   align-items: flex-start;
+  flex-wrap: wrap;
 }
 .prop-row .drag-handle {
   width: 20px;
@@ -526,6 +528,14 @@ select:focus {
 }
 .prop-row .field-content {
   min-width: 0;
+}
+.prop-body {
+  flex: 1 0 100%;
+  min-width: 0;
+  margin-top: 8px;
+}
+.prop-body > .nested-container {
+  margin-top: 0;
 }
 .name-cell {
   min-width: 0;
@@ -630,9 +640,6 @@ input[type="text"].title-input.invalid {
 }
 
 /* Value inputs */
-.prop-body {
-  margin-top: 10px;
-}
 .prop-body .value-input {
   width: 100%;
   background-color: var(--color-background);

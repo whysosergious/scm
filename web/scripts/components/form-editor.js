@@ -86,7 +86,7 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
 
     const content = el('div', { class: 'field-content' });
 
-    // Head row: name/index · type · count · chevron handled outside.
+    // Head row: name/index · type · count.
     const nameCell = el('div', { class: 'name-cell' });
     if (parent.type === 'array') {
       nameCell.append(el('span', { class: 'index-badge', text: `[${index}]` }));
@@ -102,7 +102,6 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     );
 
     content.append(head);
-    content.append(valueArea(node));
 
     const delBtn = el(
       'button',
@@ -128,7 +127,10 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
       icon('expand_more', 18),
     );
 
-    row.append(handle, chevron, content, delBtn);
+    // prop-body is a DIRECT child of the row (sibling of field-content) so
+    // nested containers and value inputs span the row's full width; the row
+    // uses flex-wrap to place it on its own line beneath the head.
+    row.append(handle, chevron, content, delBtn, valueArea(node));
 
     enableDrag({
       handle,
