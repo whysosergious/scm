@@ -1,12 +1,13 @@
-// JSON editor v1 (spec §9): plain textarea loading the complete file,
-// client-side syntax pre-check, server remains authoritative.
+// File editor container (spec_json_edit.md §2): "Form" and "JSON" modes
+// over one document, sharing a single dirty/save flow. The backend stays
+// authoritative (spec §9).
 
 import { api } from '../api.js';
+import * as model from '../json-model.js';
 import { el } from '../dom.js';
 import { patch, refreshGitStatus, selectedProject, state } from '../state.js';
+import { createFormEditor } from './form-editor.js';
 import { toast, toastError } from './toast.js';
-
-let originalText = '';
 
 export function renderEditor(root) {
   // NOTE: caller owns clearing `root`; this function renders into it.
@@ -92,59 +93,108 @@ function renderNoProject(root) {
 async function renderFileEditor(root, project) {
   const name = state.selectedFile;
 
+  let originalText = '';
+  let mode = 'form'; // 'form' | 'json'
+  let tree = null;
+  let dirty = false;
+
   const errLine = el('p', { class: 'editor-error', style: { display: 'none' } });
   const saveBtn = el('button', { class: 'btn-save', disabled: true }, 'Save');
   const cancelBtn = el('button', { class: 'btn-secondary', disabled: true }, 'Cancel');
 
-  let current = '';
+  const surface = el('div', { class: 'editor-surface' });
+
+  // ---------- tabs ----------
+  let formTab, jsonTab;
+  function paintTabs() {
+    formTab.classList.toggle('active', mode === 'form');
+    jsonTab.classList.toggle('active', mode === 'json');
+  }
+  formTab = el('button', { class: 'tab-btn active', text: 'Form' });
+  jsonTab = el('button', { class: 'tab-btn', text: 'JSON' });
+  formTab.addEventListener('click', () => setMode('form'));
+  jsonTab.addEventListener('click', () => setMode('json'));
+
+  // ---------- plain-text editor ----------
   const textarea = el('textarea', {
     class: 'json-editor',
     spellcheck: 'false',
     placeholder: 'Loading…',
   });
+  textarea.addEventListener('input', () => {
+    validateJsonText();
+    markDirty(textarea.value !== originalText);
+  });
 
-  function validate() {
-    const raw = textarea.value;
-    if (raw === originalText) {
-      saveBtn.disabled = true;
-      cancelBtn.disabled = true;
-      errLine.style.display = 'none';
-      return;
-    }
-    cancelBtn.disabled = false;
+  function validateJsonText() {
     try {
-      JSON.parse(raw);
-      errLine.style.display = 'none';
-      saveBtn.disabled = false;
+      JSON.parse(textarea.value);
+      hideErr();
+      return true;
     } catch (e) {
       // Refuse to save malformed JSON (spec §9).
-      errLine.textContent = `✕ Invalid JSON: ${e.message}`;
-      errLine.style.display = 'block';
-      saveBtn.disabled = true;
+      showErr(`✕ Invalid JSON: ${e.message}`);
+      return false;
     }
   }
 
-  textarea.addEventListener('input', validate);
+  function showErr(msg) {
+    errLine.textContent = msg;
+    errLine.style.display = 'block';
+  }
+  function hideErr() {
+    errLine.style.display = 'none';
+  }
 
+  function markDirty(v) {
+    dirty = v;
+    syncButtons();
+  }
+
+  function syncButtons() {
+    saveBtn.disabled = !dirty || (mode === 'json' && !validateQuiet());
+    cancelBtn.disabled = !dirty;
+  }
+
+  function validateQuiet() {
+    try {
+      JSON.parse(textarea.value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // ---------- actions ----------
   cancelBtn.addEventListener('click', () => {
     textarea.value = originalText;
-    validate();
+    reloadTreeFromOriginal();
+    if (mode === 'form') renderForm();
+    else renderJson();
+    markDirty(false);
+    hideErr();
   });
 
   saveBtn.addEventListener('click', async () => {
-    let parsed;
-    try {
-      parsed = JSON.parse(textarea.value);
-    } catch (e) {
-      toastError({ message: 'Invalid JSON — not saved', detail: e.message, category: 'invalid-json' });
-      return;
+    let textOut;
+    if (mode === 'form') {
+      if (!tree) return;
+      textOut = model.serialize(tree);
+    } else {
+      if (!validateJsonText()) {
+        toastError({ message: 'Invalid JSON — not saved', category: 'invalid-json' });
+        return;
+      }
+      textOut = textarea.value;
     }
+
     saveBtn.disabled = true;
     try {
-      await api.saveFile(project.id, name, JSON.stringify(parsed, null, 2) + '\n');
-      originalText = JSON.stringify(parsed, null, 2) + '\n';
-      textarea.value = originalText;
-      validate();
+      await api.saveFile(project.id, name, textOut);
+      originalText = textOut;
+      if (mode === 'json') reloadTreeFromOriginal();
+      markDirty(false);
+      hideErr();
       toast(`Saved ${name}`);
       await refreshGitStatus().catch(() => {});
       patch({});
@@ -154,26 +204,96 @@ async function renderFileEditor(root, project) {
     }
   });
 
+  function reloadTreeFromOriginal() {
+    try {
+      tree = model.parse(originalText);
+      formTab.disabled = false;
+    } catch {
+      tree = null;
+      formTab.disabled = true; // can't render forms for invalid documents
+    }
+  }
+
+  // ---------- mode switching ----------
+  function setMode(m) {
+    if (m === mode) return;
+    if (m === 'form') {
+      // Gated: JSON text must parse before we can render forms.
+      try {
+        tree = model.parse(textarea.value);
+      } catch (e) {
+        showErr(`✕ Fix the JSON first: ${e.message}`);
+        return;
+      }
+      hideErr();
+      mode = 'form';
+    } else {
+      if (mode === 'form' && tree) {
+        textarea.value = model.serialize(tree); // live sync Form → JSON
+      }
+      mode = 'json';
+    }
+    paintTabs();
+    renderSurface();
+    syncButtons();
+  }
+
+  function renderSurface() {
+    surface.textContent = '';
+    if (mode === 'form' && tree) {
+      renderForm();
+    } else {
+      renderJson();
+    }
+  }
+
+  function renderForm() {
+    const editor = createFormEditor(surface, {
+      tree,
+      // Any call means "the document changed" (spec §10 dirty semantics).
+      onDirty: () => markDirty(true),
+    });
+    editor.render();
+  }
+
+  function renderJson() {
+    surface.append(textarea);
+  }
+
+  // ---------- layout ----------
   root.append(
     el('div', { class: 'header-section' },
       el('h1', { class: 'mono-title', text: name }),
       el('p', { text: `${project.name} · ${project.content_dir}/${name}` })),
-    textarea,
+    el('div', { class: 'editor-tabs' }, formTab, jsonTab),
+    surface,
     errLine,
     el('div', { class: 'action-bar' }, cancelBtn, saveBtn),
   );
 
+  // ---------- load ----------
   textarea.value = '';
   textarea.placeholder = 'Loading…';
+  renderJson(); // placeholder surface until loaded
+
   try {
     const data = await api.loadFile(project.id, name);
     // Ignore stale responses when the user switched files meanwhile.
     if (state.selectedFile !== name) return;
     originalText = data.text;
-    current = data.text;
-    textarea.value = current;
+    textarea.value = originalText;
     textarea.placeholder = '';
-    validate();
+    reloadTreeFromOriginal();
+
+    if (tree) {
+      mode = 'form';
+    } else {
+      mode = 'json';
+      showErr('✕ This file is not valid JSON — edit it as text.');
+    }
+    paintTabs();
+    renderSurface();
+    syncButtons();
   } catch (err) {
     textarea.placeholder = '';
     toastError(err);
