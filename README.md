@@ -18,7 +18,8 @@ Built with Rust (Actix Web + Tokio) and vanilla HTML/CSS/JS ES modules.
 - **Three string editor modes** — single-line input, auto-growing text field,
   and a rich text editor (ProseMirror) with autodetected HTML/Markdown
   round-tripping. Rich mode covers headings, lists, quotes, code blocks,
-  links, images, rules, alignment, smart typography and more.
+  links, images (URL or **upload** into the site's `public/images/`),
+  rules, alignment, smart typography and more.
 - **Raw JSON mode** — plain-text editing with syntax validation; form edits
   and JSON edits stay in sync.
 - **Git publishing** — one click stages the content directory, commits, and
@@ -104,6 +105,7 @@ All endpoints are JSON under `/api` (errors shaped as
 | GET/POST | `/api/projects/{id}/content` | list / create `.json` file |
 | GET/PUT | `/api/projects/{id}/content/{name}` | load / save |
 | GET | `/api/projects/{id}/git/status` | parsed status |
+| POST | `/api/projects/{id}/assets` | upload image → `public/images/` |
 | POST | `/api/projects/{id}/publish` | stage → commit → push |
 
 ## Development

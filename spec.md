@@ -266,14 +266,12 @@ Toolbar (format-aware — HTML-only controls are hidden in Markdown mode):
 
 ### 9.5.2 Images — current approach and roadmap
 
-Current: images are inserted **by URL** (prompt for URL + alt text) and stored inline in the string value, so the target website renders them directly.
+Current, two insert paths:
 
-Planned options, in recommended order:
+- **By URL** — prompt for URL + alt text; for external or already-hosted images.
+- **By upload** — a file picker uploads the image via `POST /api/projects/{id}/assets?filename=…` into the checkout's `public/images/` folder (created on demand; name deduplicated as `name-2.ext`, `name-3.ext`, …; extension allow-list: png jpg jpeg gif webp svg avif ico bmp; max 20 MB; path segments outside the folder are stripped). The editor inserts the site-relative URL `/public/images/<name>.ext`, so the target website renders the image directly and the file is versioned with the content — publishing stages `public/images` together with the content directory.
 
-1. **Upload to the content dir** — a small backend endpoint (`POST /api/projects/{id}/assets`) storing files under a configured assets folder of the checkout and returning a relative URL; keeps the site self-contained and the images versioned with the content. Requires a spec amendment (media handling was out of scope).
-2. **Paste/drop upload** — intercept image paste/drop in the editor and route it through (1) automatically.
-3. **Media library sidebar** — browse uploaded assets, pick or re-use.
-4. **External embeds** (YouTube/Vimeo etc.) — separate embed node type.
+Future options: paste/drop upload routed through the same endpoint; a media library sidebar for browsing/re-using uploaded assets; external embeds (YouTube/Vimeo etc.) as a separate node type.
 
 ### 9.6 Collapse
 
@@ -298,7 +296,8 @@ Publishing stages **only the configured content directory**, then commits and pu
 
 ```text
 Edit content → validate JSON → save locally → stage content dir
-→ commit (default message "Update content") → push origin <branch>
+(+ `public/images` when present) → commit (default message "Update content")
+→ push origin <branch>
 ```
 
 The publish endpoint returns HTTP 200 with a discriminated `outcome` covering every case: `no_changes`, `committed_and_pushed`, `commit_failed`, `push_failed`, `auth_failed`, `remote_rejected` (non-fast-forward), `merge_conflict`, `git_missing`, `invalid_repo`. The UI renders each outcome distinctly and offers retry. Local content is never deleted or reverted when a Git operation fails.
@@ -319,6 +318,7 @@ The Rust application serves the control panel from `web/` and a JSON API under `
 | GET/POST | `/api/projects/{id}/content` | list `.json` entries / create file |
 | GET/PUT | `/api/projects/{id}/content/{name}` | load raw / validate + save |
 | GET | `/api/projects/{id}/git/status` | parsed porcelain status |
+| POST | `/api/projects/{id}/assets` | upload image into `public/images` |
 | POST | `/api/projects/{id}/publish` | stage → commit → push |
 
 Errors use `{"error": {category, message, detail}}` with categories `config`, `invalid-json`, `not-found`, `git`, `filesystem`, `network-remote`, `internal`. API responses carry `Cache-Control: no-store` so the panel always reflects disk.

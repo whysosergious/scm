@@ -3,6 +3,7 @@
 
 import * as model from '../json-model.js';
 import { el, icon } from '../dom.js';
+import { selectedProject } from '../state.js';
 import { enableDrag } from './dnd.js';
 
 const TYPE_LABELS = {
@@ -364,7 +365,9 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     import('/web/scripts/vendor/rich-editor.bundle.js')
       .then(() => {
         const rte = document.createElement('rich-text-editor');
+        const project = selectedProject();
         rte.setAttribute('format', richFormatFor(node.value));
+        if (project) rte.setAttribute('upload-url', `/api/projects/${encodeURIComponent(project.id)}/assets`);
         rte.setAttribute('value', node.value ?? '');
         rte.addEventListener('input', () => {
           node.value = rte.value;

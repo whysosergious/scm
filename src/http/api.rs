@@ -257,6 +257,111 @@ pub async fn put_content_file(
     Ok(HttpResponse::Ok().json(json!({ "saved": true, "name": name })))
 }
 
+// ================== ASSETS ==================
+
+const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "ico", "bmp"];
+const MAX_ASSET_BYTES: usize = 20 * 1024 * 1024;
+
+/// Sanitize a client-supplied filename to a safe single path component and
+/// enforce the image extension allowlist. Returns (stem, lowercase_ext).
+fn sanitize_image_filename(raw: &str) -> Option<(String, String)> {
+    let base = raw.rsplit(['/', '\\']).next()?.trim();
+    if base.is_empty() || base.len() > 120 {
+        return None;
+    }
+    let (stem, ext) = base.rsplit_once('.')?;
+    let ext = ext.to_ascii_lowercase();
+    if !IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+        return None;
+    }
+    let cleaned: String = stem
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '-' })
+        .collect();
+    let stem = cleaned.trim_matches('-').trim_matches('.').to_string();
+    if stem.is_empty() {
+        return None;
+    }
+    Some((stem, ext))
+}
+
+#[derive(Deserialize)]
+pub struct AssetQuery {
+    pub filename: String,
+}
+
+/// Upload an image into the checkout's `public/images/` folder.
+/// Body: raw image bytes. Query: ?filename=photo.png
+/// Responds with the site-relative URL to embed in content.
+#[post("/projects/{id}/assets")]
+pub async fn upload_asset(
+    state: Ctx,
+    path: web::Path<String>,
+    query: web::Query<AssetQuery>,
+    body: web::Bytes,
+) -> ScmResult<HttpResponse> {
+    let p = get_project(&state, path.into_inner())?;
+    if body.is_empty() {
+        return Err(ScmError::config("Empty upload — no image data received"));
+    }
+    if body.len() > MAX_ASSET_BYTES {
+        return Err(ScmError::config("Image too large (max 20 MB)"));
+    }
+    let Some((stem, ext)) = sanitize_image_filename(&query.filename) else {
+        return Err(ScmError::config(
+            "Invalid image filename — allowed extensions: png, jpg, jpeg, gif, webp, svg, avif, ico, bmp",
+        ));
+    };
+
+    let dest = project::checkout_path(&state.projects_root(), &p.id)?;
+    if !dest.is_dir() {
+        return Err(ScmError::not_found(format!(
+            "Checkout '{}' does not exist yet — fetch the project first",
+            p.id
+        )));
+    }
+    let assets_dir = crate::paths::safe_join(&dest, std::path::Path::new("public/images"))
+        .ok_or_else(|| ScmError::config("Asset path failed safety validation"))?;
+
+    // Deduplicate: photo.png -> photo-2.png -> photo-3.png …
+    let final_name = {
+        let assets_dir = assets_dir.clone();
+        tokio::task::spawn_blocking(move || -> ScmResult<String> {
+            std::fs::create_dir_all(&assets_dir)
+                .map_err(|e| ScmError::filesystem("Could not create the images directory").with_detail(e.to_string()))?;
+            let mut candidate = format!("{stem}.{ext}");
+            let mut n = 2;
+            while assets_dir.join(&candidate).exists() {
+                candidate = format!("{stem}-{n}.{ext}");
+                n += 1;
+            }
+            Ok(candidate)
+        })
+        .await
+        .map_err(|e| ScmError::internal("Asset task panicked").with_detail(e.to_string()))??
+    };
+
+    let file_path = assets_dir.join(&final_name);
+    let bytes = body.to_vec();
+    tokio::task::spawn_blocking(move || -> ScmResult<()> {
+        let write = || -> std::io::Result<()> {
+            use std::io::Write as _;
+            let mut f = std::fs::File::create(&file_path)?;
+            f.write_all(&bytes)?;
+            f.flush()?;
+            f.sync_all()?;
+            Ok(())
+        };
+        write().map_err(|e| ScmError::filesystem("Could not write the uploaded image").with_detail(e.to_string()))
+    })
+    .await
+    .map_err(|e| ScmError::internal("Asset task panicked").with_detail(e.to_string()))??;
+
+    let url = format!("/public/images/{final_name}");
+    log::info!("Asset uploaded: {} ({} bytes)", url, body.len());
+    Ok(HttpResponse::Created().json(json!({ "url": url, "file": final_name })))
+}
+
 // ================== GIT STATUS + PUBLISH ==================
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -409,8 +514,15 @@ pub async fn publish(state: Ctx, path: web::Path<String>, body: web::Bytes) -> S
         )));
     }
 
-    // Stage only the content directory (spec §11).
-    if let Err(e) = git::stage(&dest, &[&p.content_dir]).await {
+    // Stage the content directory plus the assets folder when present
+    // (uploaded images live in <checkout>/public/images).
+    let mut pathspecs = vec![p.content_dir.clone()];
+    let assets_dir = "public/images";
+    if dest.join(assets_dir).is_dir() {
+        pathspecs.push(assets_dir.to_string());
+    }
+    let stage_refs: Vec<&str> = pathspecs.iter().map(|s| s.as_str()).collect();
+    if let Err(e) = git::stage(&dest, &stage_refs).await {
         return Ok(HttpResponse::Ok().json(outcome_from_error(e, "commit_failed", &mk)));
     }
 

@@ -186,14 +186,19 @@ function insertHardBreak(state, dispatch) {
   return true;
 }
 
+function insertImageNode(view, src, alt) {
+  const { state, dispatch } = view;
+  const node = schema.nodes.image.create({ src, alt: alt || null, title: null });
+  dispatch(state.tr.replaceSelectionWith(node).scrollIntoView());
+  view.focus();
+  return true;
+}
+
 function insertImage(view) {
   const src = window.prompt('Image URL:');
   if (!src) return true;
   const alt = window.prompt('Alt text (optional):') ?? '';
-  const { state, dispatch } = view;
-  const node = schema.nodes.image.create({ src, alt, title: null });
-  dispatch(state.tr.replaceSelectionWith(node).scrollIntoView());
-  return true;
+  return insertImageNode(view, src, alt);
 }
 
 function toggleLink(view) {
@@ -241,7 +246,7 @@ function inBlock(state, type) {
   return false;
 }
 
-function buildToolbarItems(format) {
+function buildToolbarItems(format, uploadUrl) {
   const htmlOnly = format === 'html';
   const items = [];
   const cmd = (def) => items.push(def);
@@ -274,6 +279,9 @@ function buildToolbarItems(format) {
   cmd({ sep: true });
   cmd({ icon: 'link', title: 'Insert/edit link (Ctrl+K)', run: (view) => toggleLink(view) });
   cmd({ icon: 'image', title: 'Insert image (URL)', run: (view) => insertImage(view) });
+  if (uploadUrl) {
+    cmd({ icon: 'add_photo_alternate', title: 'Insert image (upload)', run: (view) => openUploadPicker(view, uploadUrl) });
+  }
   cmd({ icon: 'keyboard_return', title: 'Line break (Shift+Enter)', run: runView(insertHardBreak) });
   if (htmlOnly) {
     cmd({ sep: true });
@@ -429,6 +437,39 @@ function injectStyle() {
   document.head.append(tag);
 }
 
+// ------------------------------------------------------- image upload
+
+function openUploadPicker(view, uploadUrl) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/avif,image/x-icon,image/bmp';
+  input.addEventListener('change', async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      const res = await fetch(`${uploadUrl}?filename=${encodeURIComponent(file.name)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
+      if (!res.ok) {
+        let message = `Upload failed (${res.status})`;
+        try {
+          const parsed = await res.json();
+          if (parsed && parsed.error && parsed.error.message) message = parsed.error.message;
+        } catch (_) {}
+        window.alert(message);
+        return;
+      }
+      const data = await res.json();
+      insertImageNode(view, data.url, file.name.replace(/\.[^.]+$/, ''));
+    } catch (err) {
+      window.alert(`Upload failed: ${err.message || err}`);
+    }
+  });
+  input.click();
+}
+
 // --------------------------------------------------------------- element
 
 class RichTextEditor extends HTMLElement {
@@ -438,7 +479,8 @@ class RichTextEditor extends HTMLElement {
     injectStyle();
 
     this._format = this.getAttribute('format') === 'markdown' ? 'markdown' : 'html';
-    const items = buildToolbarItems(this._format);
+    this._uploadUrl = this.getAttribute('upload-url') || null;
+    const items = buildToolbarItems(this._format, this._uploadUrl);
 
     const toolbar = document.createElement('div');
     toolbar.className = 'rte-toolbar';

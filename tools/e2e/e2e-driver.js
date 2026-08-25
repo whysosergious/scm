@@ -297,7 +297,8 @@ async function dragRow(sourceRow,target){
    if(!rte) throw new Error('rte missing');
    if(rte.getAttribute('format')!=='markdown') throw new Error('expected md format');
    const toolbar=$$('.rte-btn',rte);
-   if(toolbar.length!==19) throw new Error('md toolbar size: '+toolbar.length);
+   if(toolbar.length!==20) throw new Error('md toolbar size: '+toolbar.length);
+   if(!toolbar.find(b=>b.title==='Insert image (upload)')) throw new Error('upload button missing');
    if(toolbar.some(b=>b.title.includes('Underline')||b.title.includes('Align'))) throw new Error('html-only buttons in md mode');
    if(!$q('.rte-count',rte)) throw new Error('no word count');
    const mdBtn=(title)=>{ const b=toolbar.find(x=>x.title.startsWith(title)); if(!b) throw new Error('missing btn: '+title); return b; };
@@ -347,7 +348,8 @@ async function dragRow(sourceRow,target){
    const rte=$q('rich-text-editor',nameRow);
    if(!rte||rte.getAttribute('format')!=='html') throw new Error('html format not detected');
    const toolbar=$$('.rte-btn',rte);
-   if(toolbar.length!==24) throw new Error('html toolbar size: '+toolbar.length);
+   if(toolbar.length!==25) throw new Error('html toolbar size: '+toolbar.length);
+   if(!toolbar.find(b=>b.title==='Insert image (upload)')) throw new Error('upload button missing');
    const htmlBtn=(title)=>{ const b=toolbar.find(x=>x.title.startsWith(title)); if(!b) throw new Error('missing btn: '+title); return b; };
 
    // underline (html only)
