@@ -263,6 +263,14 @@
   margin: 0 auto;
 }
 
+#view-root {
+  max-width: none;
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .header-section {
   margin-bottom: 24px;
 }

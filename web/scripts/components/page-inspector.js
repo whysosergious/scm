@@ -214,7 +214,7 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
       const prop = CSS_PROP_MAP[key];
       const label = prop ? prop.label : key;
 
-      const row = el('div', { class: 'inspector-css-row' });
+      const row = el('div', { class: 'inspector-css-row', 'data-style-key': key });
 
       // Property name
       row.append(el('span', { class: 'inspector-css-label', text: label }));
@@ -236,16 +236,16 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
           value: val,
           placeholder: ph,
         });
+        input.addEventListener('focus', () => input.select());
       }
 
-      input.addEventListener('change', () => {
+      input.addEventListener('input', () => {
         if (input.value) {
           node.styles[key] = input.value;
         } else {
           delete node.styles[key];
         }
         onChange();
-        renderStyles();
       });
 
       row.append(input);
@@ -318,53 +318,104 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
 }
 
 function showPropertyPicker(container, addBtn, node, onChange, renderStyles) {
-  // Remove existing picker if any
   container.querySelector('.css-property-picker')?.remove();
 
   const usedKeys = new Set(Object.keys(node.styles || {}));
   const available = CSS_PROPS.filter((p) => !usedKeys.has(p.key));
 
+  let highlightIdx = -1;
+  let filteredItems = [];
+
   const picker = el('div', { class: 'css-property-picker' });
   const search = el('input', {
     type: 'text',
     class: 'value-input css-picker-search',
-    placeholder: 'Search CSS properties...',
+    placeholder: 'Type to search...',
   });
   const list = el('div', { class: 'css-picker-list' });
 
   function renderList(filter = '') {
     list.textContent = '';
+    highlightIdx = -1;
     const lower = filter.toLowerCase();
-    const filtered = available.filter((p) =>
+    filteredItems = available.filter((p) =>
       !usedKeys.has(p.key) && (p.label.toLowerCase().includes(lower) || p.key.toLowerCase().includes(lower))
     );
-    for (const prop of filtered) {
-      const item = el('div', { class: 'css-picker-item', text: prop.label });
-      item.addEventListener('click', () => {
-        // Set default value
-        const defaultVal = prop.placeholder || '';
-        node.styles[prop.key] = defaultVal;
-        onChange();
-        picker.remove();
-        renderStyles();
-      });
+
+    for (let i = 0; i < filteredItems.length; i++) {
+      const prop = filteredItems[i];
+      const item = el('div', { class: 'css-picker-item', 'data-idx': i },
+        el('span', { class: 'css-picker-item-name', text: prop.label }),
+        el('span', { class: 'css-picker-item-type muted-note', text: prop.type === 'select' ? 'select' : 'value' }),
+      );
+      item.addEventListener('click', () => pickProperty(prop));
+      item.addEventListener('mouseenter', () => setHighlight(i));
       list.append(item);
     }
-    if (filtered.length === 0) {
+
+    if (filteredItems.length === 0) {
       list.append(el('div', { class: 'css-picker-empty muted-note', text: 'No matching properties' }));
+    } else {
+      setHighlight(0);
     }
   }
 
+  function setHighlight(idx) {
+    highlightIdx = idx;
+    list.querySelectorAll('.css-picker-item').forEach((item, i) => {
+      item.classList.toggle('highlighted', i === idx);
+    });
+    // Scroll highlighted into view
+    const highlighted = list.querySelector('.highlighted');
+    if (highlighted) highlighted.scrollIntoView({ block: 'nearest' });
+  }
+
+  function pickProperty(prop) {
+    const defaultVal = prop.placeholder || (prop.type === 'select' ? prop.options[0] : 'unset');
+    node.styles[prop.key] = defaultVal;
+    onChange();
+    picker.remove();
+    renderStyles();
+    // Focus the value input for the newly added property
+    requestAnimationFrame(() => {
+      const row = container.querySelector(`[data-style-key="${prop.key}"]`);
+      const input = row?.querySelector('.value-input, select');
+      if (input) input.focus();
+    });
+  }
+
   search.addEventListener('input', () => renderList(search.value));
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlight(Math.min(highlightIdx + 1, filteredItems.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlight(Math.max(highlightIdx - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightIdx >= 0 && highlightIdx < filteredItems.length) {
+        pickProperty(filteredItems[highlightIdx]);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      picker.remove();
+    }
+  });
 
   picker.append(search, list);
   addBtn.before(picker);
 
-  // Focus search and render initial list
+  // Flip to drop-up if not enough space below
+  const pickerRect = picker.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - pickerRect.bottom;
+  if (spaceBelow < 180) {
+    picker.classList.add('drop-up');
+  }
+
   search.focus();
   renderList();
 
-  // Close on outside click
   const closeHandler = (e) => {
     if (!picker.contains(e.target) && e.target !== addBtn) {
       picker.remove();

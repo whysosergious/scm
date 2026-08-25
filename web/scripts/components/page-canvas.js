@@ -170,21 +170,25 @@ function renderText(parent, node, selectedId, onSelect) {
 }
 
 function renderImage(parent, node, selectedId, onSelect) {
+  // Wrap img in a div because ::after doesn't work on replaced elements
+  const wrapper = document.createElement('div');
+  wrapper.dataset.nodeId = node.id;
+  wrapper.dataset.nodeType = 'image';
+  wrapper.dataset.element = 'img';
+  wrapper.classList.add('canvas-page-node');
+  applyStyles(wrapper, node);
+  applyClasses(wrapper, node);
+
   const tag = document.createElement('img');
-  tag.dataset.nodeId = node.id;
-  tag.dataset.nodeType = 'image';
-  tag.dataset.element = 'img';
-  tag.classList.add('canvas-page-node');
-  // Resolve relative src via /files/{projectId}/
   tag.src = resolveImgSrc(node.props && node.props.src);
   tag.alt = (node.props && node.props.alt) || '';
   tag.style.maxWidth = '100%';
-  applyStyles(tag, node);
-  applyClasses(tag, node);
+  tag.style.display = 'block';
+  wrapper.append(tag);
 
-  addInteraction(tag, node.id, onSelect);
-  if (node.id === selectedId) tag.classList.add('selected');
-  parent.append(tag);
+  addInteraction(wrapper, node.id, onSelect);
+  if (node.id === selectedId) wrapper.classList.add('selected');
+  parent.append(wrapper);
 }
 
 function addInteraction(tag, nodeId, onSelect) {

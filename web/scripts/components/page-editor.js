@@ -155,7 +155,6 @@ function renderEditor(root, project) {
   function onNodeChange() {
     markDirty(true);
     renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
-    requestAnimationFrame(() => syncAllOverlays(canvasEl));
   }
 
   function onDrop(nodeId, targetParentId, index) {

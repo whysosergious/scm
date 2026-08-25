@@ -4,14 +4,14 @@
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 8px;
-  margin-top: 16px;
+  padding: 6px;
+  margin-top: 6px;
   background: transparent;
-  color: var(--color-on-surface);
-  border: 1px solid var(--color-outline-variant);
+  color: var(--color-primary);
+  border: none;
   border-radius: var(--radius);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.2s;
   font-family: var(--font-label);
   font-size: 11px;
 }
@@ -1205,12 +1205,12 @@ input[type="text"].title-input.invalid {
   cursor: pointer;
 }
 
-/* Hover indicator: only on directly hovered element */
-.canvas-page-node.canvas-hovered:not(.selected):not(.dragging) {
-  outline-color: rgba(66, 133, 244, 0.4);
+/* Hover indicator: pale/semi-transparent — always wins over selected */
+.canvas-page-node.canvas-hovered:not(.dragging) {
+  outline-color: rgba(66, 133, 244, 0.25);
 }
 
-.canvas-page-node.canvas-hovered:not(.selected):not(.dragging)::after {
+.canvas-page-node.canvas-hovered:not(.dragging)::after {
   content: attr(data-element);
   position: absolute;
   top: -18px;
@@ -1219,20 +1219,20 @@ input[type="text"].title-input.invalid {
   font-size: 9px;
   padding: 1px 4px;
   border-radius: 3px;
-  background: rgba(66, 133, 244, 0.85);
+  background: rgba(66, 133, 244, 0.6);
   color: #fff;
   pointer-events: none;
   white-space: nowrap;
   z-index: 5;
 }
 
-/* Selected indicator */
+/* Selected indicator: deep/opaque — label only when nothing is hovered */
 .canvas-page-node.selected {
   outline-color: var(--color-primary);
+  outline-width: 2px;
 }
 
-/* Selected label */
-.canvas-page-node.selected::after {
+.canvas-page-node.selected:not(.canvas-hovered)::after {
   content: attr(data-element);
   position: absolute;
   top: -18px;
@@ -1378,13 +1378,13 @@ input[type="text"].title-input.invalid {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-bottom: 4px;
+  padding: 2px 0;
 }
 
 .inspector-css-label {
   font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--color-on-surface-variant);
+  font-size: 11px;
+  color: var(--color-on-surface);
   min-width: 70px;
   white-space: nowrap;
   overflow: hidden;
@@ -1397,14 +1397,19 @@ input[type="text"].title-input.invalid {
   font-family: var(--font-mono);
   font-size: 11px;
   min-width: 0;
+  padding: 3px 4px;
+}
+
+select.inspector-css-value {
+  padding: 2px 4px;
 }
 
 .inspector-css-remove {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: none;
   border-radius: 3px;
@@ -1412,6 +1417,12 @@ input[type="text"].title-input.invalid {
   color: var(--color-on-surface-variant);
   cursor: pointer;
   flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s;
+}
+
+.inspector-css-row:hover .inspector-css-remove {
+  opacity: 1;
 }
 
 .inspector-css-remove:hover {
@@ -1422,17 +1433,32 @@ input[type="text"].title-input.invalid {
 .inspector-styles {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
-/* CSS property picker dropdown */
-.css-property-picker {
+/* CSS property picker — floating dropdown */
+.inspector-styles {
   position: relative;
-  margin-top: 4px;
+}
+
+.css-property-picker {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 2px;
   border: 1px solid var(--color-outline-variant);
   border-radius: var(--radius);
   background: var(--color-surface);
   z-index: 20;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.css-property-picker.drop-up {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 2px;
 }
 
 .css-picker-search {
@@ -1444,6 +1470,7 @@ input[type="text"].title-input.invalid {
   font-size: 12px;
   padding: 6px 8px;
   box-sizing: border-box;
+  outline: none;
 }
 
 .css-picker-list {
@@ -1452,14 +1479,30 @@ input[type="text"].title-input.invalid {
 }
 
 .css-picker-item {
-  padding: 5px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
   font-family: var(--font-mono);
   font-size: 12px;
   cursor: pointer;
+  border-radius: 2px;
+  margin: 0 2px;
 }
 
-.css-picker-item:hover {
+.css-picker-item:hover,
+.css-picker-item.highlighted {
   background: var(--color-primary-container);
+}
+
+.css-picker-item-name {
+  flex: 1;
+}
+
+.css-picker-item-type {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .css-picker-empty {
