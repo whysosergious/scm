@@ -102,12 +102,41 @@ language of the original control-panel sketch (`.field-item`,
 
 | Type | Control |
 |---|---|
-| String | resizable multi-line text field (textarea, vertical resize) |
+| String | one of three switchable editor modes, see below |
 | Number | `<input type="number" step="any">` (floats/exponents allowed) |
 | Boolean | toggle switch |
 | Null | disabled note reading `null` |
 | Object | nested container listing child rows recursively + "Add property" |
 | Array | nested container listing entry rows recursively + "Add entry" |
+
+Value areas are direct children of the row element so nested containers and
+inputs span the full width of the row, not just the head columns.
+
+### String editor modes
+
+A compact three-button switcher sits above every string value control:
+
+| Mode | Icon | Control | Value semantics |
+|---|---|---|---|
+| Text input | `text_fields` | single-line `<input type="text">` | raw string |
+| Text field | `wrap_text` | auto-growing, vertically resizable textarea | raw string (multi-line) |
+| Rich text | `edit_note` | ProseMirror WYSIWYG with toolbar (bold/italic/code, lists, quote, undo/redo) | HTML string (`<p>…</p>`) |
+
+Rules:
+
+- The mode is **UI state per property** (not stored in the document). The
+  default is heuristic: HTML-looking values open in rich mode, multi-line
+  values in text-field mode, everything else as a text input.
+- Switching modes never destroys data: the raw string carries over. Moving
+  plain text into rich mode renders it as paragraphs (`\n\n` splits, `\n`
+  becomes `<br>`); leaving rich mode exposes the HTML source to the plain
+  controls.
+- The value is always a plain JSON string, so static sites consume the HTML
+  directly and no server-side changes are required.
+- The ProseMirror editor ships as a **pre-built, self-contained ES bundle**
+  (`web/scripts/vendor/rich-editor.bundle.js`) that the app lazy-imports on
+  first use. Build tooling (vite + npm) lives in `editor-src/` and is only
+  needed when changing the editor component — never to launch the app.
 
 Value areas are direct children of the row element so nested containers and
 inputs span the full width of the row, not just the head columns.
@@ -201,9 +230,10 @@ the JSON tab always shows the resulting document before saving.
    or blur commits; duplicate/empty renames are rejected inline.
 3. The type control reads as text with a dropdown affordance; its menu offers
    exactly String, Number, Boolean, Object, Array, Null.
-4. String/number/boolean/null values render a resizable text field / number
-   input / toggle / disabled note respectively, on a full-width row beneath
-   the head row.
+4. String values render one of three switchable modes (single-line input,
+   auto-growing text field, ProseMirror rich text) selected via the compact
+   switcher; number/boolean/null render a number input / toggle / disabled
+   note respectively, on a full-width row beneath the head row.
 5. Object/array values render nested rows recursively plus an add button;
    array entries use immutable `[n]` badges that re-index automatically.
 6. Any row collapses via the chevron (right-side action cluster) to one head

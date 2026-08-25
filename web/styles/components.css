@@ -770,3 +770,40 @@ input[type="text"].title-input.invalid {
     transition: none !important;
   }
 }
+
+/* String editor mode switcher: input · text field · rich text */
+.string-value {
+  display: flex;
+  flex-direction: column;
+}
+.value-mode-switch {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.mode-btn {
+  background: none;
+  border: none;
+  color: var(--color-on-surface-variant);
+  opacity: 0.55;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+.mode-btn:hover {
+  opacity: 1;
+  background-color: var(--color-surface-variant);
+}
+.mode-btn.active {
+  opacity: 1;
+  color: var(--color-primary);
+  background-color: rgba(37, 99, 235, 0.15);
+}
+.rich-holder {
+  min-height: 40px;
+}

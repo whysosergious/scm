@@ -285,14 +285,123 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     return wrap;
   }
 
-  // ================== VALUE AREA ==================
+  // ================== STRING EDITOR MODES ==================
+  // Three ways to edit a string value: single-line input, resizable text
+  // field, rich text (ProseMirror). The mode is UI state per node (not
+  // stored in the document); the value is always a plain string — in rich
+  // mode it holds the HTML serialization.
+
+  const STRING_MODES = [
+    ['input', 'text_fields', 'Single-line text input'],
+    ['textarea', 'wrap_text', 'Resizable text field'],
+    ['rich', 'edit_note', 'Rich text'],
+  ];
+  const stringModes = new Map(); // node id -> mode
+
+  function stringModeFor(node) {
+    if (stringModes.has(node.id)) return stringModes.get(node.id);
+    const v = node.value ?? '';
+    if (/<[a-z!][\s\S]*>/i.test(v)) return 'rich';
+    if (v.includes('\n')) return 'textarea';
+    return 'input';
+  }
+
+  function stringValueArea(node) {
+    const mode = stringModeFor(node);
+    const wrap = el('div', { class: 'string-value' });
+
+    const switcher = el('div', { class: 'value-mode-switch' });
+    for (const [m, ic, title] of STRING_MODES) {
+      switcher.append(
+        el('button', {
+          class: `mode-btn ${m === mode ? 'active' : ''}`,
+          type: 'button',
+          title,
+          onclick: () => {
+            if (stringModeFor(node) !== m) {
+              stringModes.set(node.id, m);
+              rerender();
+            }
+          },
+        }, icon(ic, 15)),
+      );
+    }
+    wrap.append(switcher);
+
+    if (mode === 'rich') wrap.append(richHolder(node));
+    else wrap.append(stringControl(node, mode));
+
+    return wrap;
+  }
+
+  function richHolder(node) {
+    const holder = el('div', { class: 'rich-holder' },
+      el('span', { class: 'muted-note', text: 'Loading editor…' }));
+    import('/web/scripts/vendor/rich-editor.bundle.js')
+      .then(() => {
+        const rte = document.createElement('rich-text-editor');
+        rte.setAttribute('value', node.value ?? '');
+        rte.addEventListener('input', () => {
+          node.value = rte.value;
+          onDirty?.();
+        });
+        holder.textContent = '';
+        holder.append(rte);
+      })
+      .catch((err) => {
+        console.error(err);
+        holder.textContent = '';
+        holder.append(
+          el('span', { class: 'editor-error', text: '✕ Rich editor failed to load — plain text fallback.' }),
+          stringControl(node, 'textarea'),
+        );
+      });
+    return holder;
+  }
+
+  function stringControl(node, mode) {
+    if (mode === 'input') {
+      const input = el('input', {
+        type: 'text',
+        class: 'value-input',
+        value: node.value ?? '',
+        autocomplete: 'off',
+      });
+      input.addEventListener('input', () => {
+        node.value = input.value;
+        onDirty?.();
+      });
+      return input;
+    }
+    // resizable textarea (default)
+    const ta = el('textarea', {
+      class: 'value-input string-input',
+      spellcheck: 'false',
+      rows: '1',
+      placeholder: '',
+    });
+    ta.value = node.value ?? '';
+
+    const autoSize = () => {
+      ta.style.height = 'auto';
+      ta.style.height = `${Math.min(ta.scrollHeight, 320)}px`;
+    };
+    ta.addEventListener('input', () => {
+      node.value = ta.value;
+      autoSize();
+      onDirty?.();
+    });
+    requestAnimationFrame(autoSize);
+
+    return ta;
+  }
 
   function valueArea(node) {
     const body = el('div', { class: 'prop-body' });
 
     switch (node.type) {
       case 'string':
-        body.append(stringInput(node));
+        body.append(stringValueArea(node));
         break;
       case 'number':
         body.append(numberInput(node));
@@ -324,30 +433,6 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
       }
     }
     return body;
-  }
-
-  function stringInput(node) {
-    const ta = el('textarea', {
-      class: 'value-input string-input',
-      spellcheck: 'false',
-      rows: '1',
-      placeholder: '',
-    });
-    ta.value = node.value ?? '';
-
-    // Auto-grow with content (fallback for browsers without field-sizing).
-    const autoSize = () => {
-      ta.style.height = 'auto';
-      ta.style.height = `${Math.min(ta.scrollHeight, 320)}px`;
-    };
-    ta.addEventListener('input', () => {
-      node.value = ta.value;
-      autoSize();
-      onDirty?.();
-    });
-    requestAnimationFrame(autoSize);
-
-    return ta;
   }
 
   function numberInput(node) {
