@@ -796,6 +796,193 @@ input[type="text"].title-input.invalid {
   }
 }
 
+/* ==================== BOX MODEL CONTROL ==================== */
+
+.bm-buttons {
+  position: absolute;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transform: translateY(-50%);
+}
+
+.bm-btn {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 3px;
+  background: var(--color-surface);
+  color: var(--color-on-surface-variant);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.1s, color 0.1s;
+}
+
+.bm-btn:hover {
+  background: var(--color-surface-variant);
+}
+
+.bm-btn.active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+/* Panel */
+.bm-panel {
+  position: absolute;
+  z-index: 16;
+  background: var(--color-surface);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  padding: 8px;
+  min-width: 120px;
+}
+
+.bm-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+/* Dimensions panel */
+.bm-dim-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bm-dim-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: ew-resize;
+  user-select: none;
+}
+
+.bm-dim-group:hover {
+  background: var(--color-surface-variant);
+}
+
+.bm-dim-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-on-surface-variant);
+  min-width: 14px;
+}
+
+.bm-dim-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-on-surface);
+}
+
+/* Box model diagram (padding/margin) */
+.bm-box {
+  position: relative;
+  width: 110px;
+  height: 90px;
+}
+
+.bm-zone {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.bm-zone-value {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+/* Top zone */
+.bm-zone-top {
+  top: 0;
+  left: 20px;
+  right: 20px;
+  height: 20px;
+  background: rgba(66, 133, 244, 0.15);
+  color: rgba(66, 133, 244, 0.9);
+  cursor: ns-resize;
+}
+.bm-zone-top:hover { background: rgba(66, 133, 244, 0.3); }
+
+/* Right zone */
+.bm-zone-right {
+  top: 20px;
+  right: 0;
+  bottom: 20px;
+  width: 20px;
+  background: rgba(66, 133, 244, 0.15);
+  color: rgba(66, 133, 244, 0.9);
+  cursor: ew-resize;
+}
+.bm-zone-right:hover { background: rgba(66, 133, 244, 0.3); }
+
+/* Bottom zone */
+.bm-zone-bottom {
+  bottom: 0;
+  left: 20px;
+  right: 20px;
+  height: 20px;
+  background: rgba(66, 133, 244, 0.15);
+  color: rgba(66, 133, 244, 0.9);
+  cursor: ns-resize;
+}
+.bm-zone-bottom:hover { background: rgba(66, 133, 244, 0.3); }
+
+/* Left zone */
+.bm-zone-left {
+  top: 20px;
+  left: 0;
+  bottom: 20px;
+  width: 20px;
+  background: rgba(66, 133, 244, 0.15);
+  color: rgba(66, 133, 244, 0.9);
+  cursor: ew-resize;
+}
+.bm-zone-left:hover { background: rgba(66, 133, 244, 0.3); }
+
+/* Center content area */
+.bm-center {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-variant);
+  border-radius: 2px;
+}
+
+.bm-center span {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--color-on-surface-variant);
+}
+}
+
 /* String editor mode switcher: input · text field · rich text */
 .string-value {
   display: flex;

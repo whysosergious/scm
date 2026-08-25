@@ -9,6 +9,7 @@ import { patch, refreshGitStatus, refreshPages, selectedProject, state } from '.
 import { renderPalette } from './page-palette.js';
 import { renderCanvas, setupCanvasDragDrop, setProjectId } from './page-canvas.js';
 import { renderInspector } from './page-inspector.js';
+import { renderBoxModel, clearBoxModel } from './page-boxmodel.js';
 import { toast, toastError } from './toast.js';
 
 export function renderPageEditor(root) {
@@ -143,6 +144,14 @@ function renderEditor(root, project) {
     dirtyIndicator.textContent = v ? '(unsaved changes)' : '';
   }
 
+  function renderBoxModelNow() {
+    clearBoxModel(canvasEl);
+    if (selectedNodeId) {
+      const node = pm.findNode(doc.root, selectedNodeId);
+      if (node) renderBoxModel(canvasEl, node, onNodeChange);
+    }
+  }
+
   function selectNode(id) {
     selectedNodeId = id;
     renderInspector(inspectorEl, doc, id, onNodeChange);
@@ -150,18 +159,41 @@ function renderEditor(root, project) {
     canvasEl.querySelectorAll('.canvas-page-node').forEach((n) => {
       n.classList.toggle('selected', n.dataset.nodeId === id);
     });
+    // Box model control — defer to let canvas layout settle
+    clearBoxModel(canvasEl);
+    if (id) {
+      requestAnimationFrame(() => {
+        const node = pm.findNode(doc.root, id);
+        if (node && selectedNodeId === id) {
+          renderBoxModel(canvasEl, node, onNodeChange);
+        }
+      });
+    }
   }
 
   function onNodeChange() {
     markDirty(true);
     renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+    if (selectedNodeId) {
+      requestAnimationFrame(() => {
+        const node = pm.findNode(doc.root, selectedNodeId);
+        if (node) renderBoxModel(canvasEl, node, onNodeChange);
+      });
+    }
   }
 
   function onDrop(nodeId, targetParentId, index) {
     const changed = pm.moveNode(doc.root, nodeId, targetParentId, index);
     if (changed) {
       markDirty(true);
+      clearBoxModel(canvasEl);
       renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+      if (selectedNodeId) {
+        requestAnimationFrame(() => {
+          const node = pm.findNode(doc.root, selectedNodeId);
+          if (node) renderBoxModel(canvasEl, node, onNodeChange);
+        });
+      }
     }
   }
 
@@ -169,8 +201,9 @@ function renderEditor(root, project) {
     const node = pm.addNode(doc.root, parentId, type, index);
     if (node) {
       markDirty(true);
+      clearBoxModel(canvasEl);
       renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
-      selectNode(node.id);
+      requestAnimationFrame(() => selectNode(node.id));
     }
   }
 
@@ -210,6 +243,14 @@ function renderEditor(root, project) {
   renderPalette(paletteEl, (type) => {
     onAddNode(doc.root.id, doc.root.children.length, type);
   });
+
+  // Re-render box model when canvas resizes (layout reflow changes element positions)
+  const resizeObs = new ResizeObserver(() => {
+    if (selectedNodeId) {
+      requestAnimationFrame(renderBoxModelNow);
+    }
+  });
+  resizeObs.observe(canvasEl);
 
   // Load page
   loadPage();
