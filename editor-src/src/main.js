@@ -15,21 +15,43 @@ import { EditorView } from 'prosemirror-view';
 import { Schema, DOMParser as PMDOMParser, DOMSerializer } from 'prosemirror-model';
 import { schema as basicSchema } from 'prosemirror-schema-basic';
 import { addListNodes, wrapInList, splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list';
-import { toggleMark, chainCommands, exitCode, baseKeymap } from 'prosemirror-commands';
+import { toggleMark, chainCommands, exitCode, baseKeymap, wrapIn } from 'prosemirror-commands';
 import { history, undo, redo } from 'prosemirror-history';
 import { keymap } from 'prosemirror-keymap';
-import { wrapIn } from 'prosemirror-commands';
+import markdownit from 'markdown-it';
+import {
+  MarkdownParser,
+  MarkdownSerializer,
+  defaultMarkdownParser,
+  defaultMarkdownSerializer,
+} from 'prosemirror-markdown';
 
 const schema = new Schema({
   nodes: addListNodes(basicSchema.spec.nodes, 'paragraph block*', 'block'),
   marks: basicSchema.spec.marks,
 });
 
-const parser = PMDOMParser.fromSchema(schema);
-const serializer = DOMSerializer.fromSchema(schema);
+// Markdown round-trip bound to OUR schema (defaults are built for
+// schema-basic, but their token/node specs are name-based and cover lists,
+// so re-binding to the combined schema is safe).
+const markdownParser = new MarkdownParser(
+  schema,
+  markdownit('commonmark', { html: false }),
+  defaultMarkdownParser.tokens,
+);
+const markdownSerializer = new MarkdownSerializer(
+  defaultMarkdownSerializer.nodes,
+  defaultMarkdownSerializer.marks,
+);
 
-function docFromHTML(html) {
+const htmlParser = PMDOMParser.fromSchema(schema);
+const htmlSerializer = DOMSerializer.fromSchema(schema);
+
+function parseContent(html, format) {
   const div = document.createElement('div');
+  if (format === 'markdown') {
+    return markdownParser.parse(String(html ?? ''));
+  }
   const raw = String(html ?? '');
   if (!/<[a-z!][\s\S]*>/i.test(raw)) {
     // Plain text: blank lines split paragraphs, single newlines become <br>.
@@ -40,13 +62,14 @@ function docFromHTML(html) {
   } else {
     div.innerHTML = raw;
   }
-  return parser.parse(div);
+  return htmlParser.parse(div);
 }
 
-function htmlFromDoc(doc) {
+function serializeContent(doc, format) {
   const div = document.createElement('div');
-  div.append(serializer.serializeFragment(doc.content));
-  return div.innerHTML;
+  div.append(htmlSerializer.serializeFragment(doc.content));
+  const html = div.innerHTML;
+  return format === 'markdown' ? markdownSerializer.serialize(doc).trim() : html;
 }
 
 const TOOLBAR = [
@@ -197,9 +220,10 @@ class RichTextEditor extends HTMLElement {
 
     this.append(toolbar, view);
 
+    this._format = this.getAttribute('format') === 'markdown' ? 'markdown' : 'html';
     this._view = new EditorView(view, {
       state: EditorState.create({
-        doc: docFromHTML(this.getAttribute('value') ?? ''),
+        doc: parseContent(this.getAttribute('value') ?? '', this._format),
         plugins: [
           history(),
           keymap({
@@ -251,9 +275,13 @@ class RichTextEditor extends HTMLElement {
     this.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
+  get format() {
+    return this._format ?? 'html';
+  }
+
   get value() {
     if (!this._view) return this.getAttribute('value') ?? '';
-    return htmlFromDoc(this._view.state.doc);
+    return serializeContent(this._view.state.doc, this._format);
   }
 
   set value(html) {
@@ -264,7 +292,7 @@ class RichTextEditor extends HTMLElement {
     if (html === this.value) return;
     if (this._view.hasFocus()) return; // don't yank the doc mid-typing
     const state = EditorState.create({
-      doc: docFromHTML(html),
+      doc: parseContent(html, this._format),
       plugins: this._view.state.plugins,
     });
     this._view.updateState(state);

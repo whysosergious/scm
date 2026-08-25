@@ -120,19 +120,25 @@ A compact three-button switcher sits above every string value control:
 |---|---|---|---|
 | Text input | `text_fields` | single-line `<input type="text">` | raw string |
 | Text field | `wrap_text` | auto-growing, vertically resizable textarea | raw string (multi-line) |
-| Rich text | `edit_note` | ProseMirror WYSIWYG with toolbar (bold/italic/code, lists, quote, undo/redo) | HTML string (`<p>…</p>`) |
+| Rich text | `edit_note` | ProseMirror WYSIWYG with toolbar (bold/italic/code, lists, quote, undo/redo) | HTML **or** Markdown string |
 
 Rules:
 
-- The mode is **UI state per property** (not stored in the document). The
-  default is heuristic: HTML-looking values open in rich mode, multi-line
-  values in text-field mode, everything else as a text input.
+- The mode is **autodetected** for untouched properties: HTML-looking values
+  and Markdown-marked values (headings, lists, emphasis, inline code, links,
+  fences) open in rich mode; multi-line plain text opens as a text field;
+  everything else as a text input. Once the user switches modes manually,
+  that choice is remembered per property path (in-memory, per session).
+- The rich editor autodetects the **storage format** of the string and
+  round-trips it in the same format: HTML values parse/serialize as HTML,
+  everything else (including plain text) as CommonMark Markdown. Raw HTML
+  inside Markdown is treated as literal text (matching the default
+  prosemirror-markdown configuration).
 - Switching modes never destroys data: the raw string carries over. Moving
-  plain text into rich mode renders it as paragraphs (`\n\n` splits, `\n`
-  becomes `<br>`); leaving rich mode exposes the HTML source to the plain
-  controls.
+  plain text into rich mode renders it as Markdown (losslessly); leaving
+  rich mode exposes the serialized source to the plain controls.
 - The value is always a plain JSON string, so static sites consume the HTML
-  directly and no server-side changes are required.
+  or Markdown directly and no server-side changes are required.
 - The ProseMirror editor ships as a **pre-built, self-contained ES bundle**
   (`web/scripts/vendor/rich-editor.bundle.js`) that the app lazy-imports on
   first use. Build tooling (vite + npm) lives in `editor-src/` and is only

@@ -14,6 +14,31 @@ const TYPE_LABELS = {
   null: 'Null',
 };
 
+// HTML-ish values carry markup tags; markdown-ish values carry markdown
+// markers (headings, lists, emphasis, code, links, fences). Deliberately
+// NO single-underscore emphasis: it false-positives on URLs and
+// snake_case identifiers.
+const HTMLISH_RE = /<[a-z!][\s\S]*>/i;
+const MARKDOWNISH_RE = /(^|\n)[ ]{0,3}(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s)|\*\*[^*\n]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\n]+\)|(^|\n)```/;
+
+/** Length beyond which plain text autodetects as a multi-line field. */
+const TEXTAREA_LENGTH_THRESHOLD = 100;
+
+function richFormatFor(value) {
+  return HTMLISH_RE.test(value ?? '') ? 'html' : 'markdown';
+}
+
+/**
+ * Pure autodetect heuristic (exported for tests): rich for HTML/markdown,
+ * text field for long or multi-line plain text, input for the rest.
+ */
+export function autodetectStringMode(value) {
+  const v = String(value ?? '');
+  if (HTMLISH_RE.test(v) || MARKDOWNISH_RE.test(v)) return 'rich';
+  if (v.includes('\n') || v.length > TEXTAREA_LENGTH_THRESHOLD) return 'textarea';
+  return 'input';
+}
+
 export function createFormEditor(rootEl, { tree, onDirty }) {
   const api = {
     tree,
@@ -296,14 +321,13 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     ['textarea', 'wrap_text', 'Resizable text field'],
     ['rich', 'edit_note', 'Rich text'],
   ];
-  const stringModes = new Map(); // node id -> mode
+  const stringModes = new Map(); // property path -> mode
+  const modeKeyFor = (node) => model.nodePath(api.tree, node).join('\u001f');
 
   function stringModeFor(node) {
-    if (stringModes.has(node.id)) return stringModes.get(node.id);
-    const v = node.value ?? '';
-    if (/<[a-z!][\s\S]*>/i.test(v)) return 'rich';
-    if (v.includes('\n')) return 'textarea';
-    return 'input';
+    const key = modeKeyFor(node);
+    if (stringModes.has(key)) return stringModes.get(key);
+    return autodetectStringMode(node.value);
   }
 
   function stringValueArea(node) {
@@ -319,7 +343,7 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
           title,
           onclick: () => {
             if (stringModeFor(node) !== m) {
-              stringModes.set(node.id, m);
+              stringModes.set(modeKeyFor(node), m);
               rerender();
             }
           },
@@ -340,6 +364,7 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     import('/web/scripts/vendor/rich-editor.bundle.js')
       .then(() => {
         const rte = document.createElement('rich-text-editor');
+        rte.setAttribute('format', richFormatFor(node.value));
         rte.setAttribute('value', node.value ?? '');
         rte.addEventListener('input', () => {
           node.value = rte.value;

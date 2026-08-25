@@ -226,6 +226,24 @@ export function findNode(root, id) {
   return null;
 }
 
+/**
+ * Stable-ish path of a node: segments are object keys or array indices,
+ * e.g. ['website', 'name'] or ['posts', 0, 'title']. Used for UI state
+ * keys that should survive re-parsing (unlike node ids).
+ */
+export function nodePath(root, node) {
+  const segments = [];
+  let current = node;
+  for (;;) {
+    const parent = findParent(root, current.id);
+    if (!parent) break;
+    const idx = parent.children.indexOf(current);
+    segments.unshift(parent.type === 'array' ? idx : current.key);
+    current = parent;
+  }
+  return segments;
+}
+
 /** The immediate parent of the node with the given id, or null for root. */
 export function findParent(root, id) {
   for (const c of root.children) {

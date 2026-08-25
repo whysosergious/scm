@@ -30,7 +30,7 @@ Current state: v1 backend and frontend are implemented per `TODO.md` (all phases
 ## Repo quirks
 
 - `.gitignore` ignores `*.lock`, so `Cargo.lock` is untracked — don't commit it.
-- Rich text editor: source + npm project in `editor-src/` (ProseMirror, vite). Build once with `cd editor-src && npm install && npm run build`; output `web/scripts/vendor/rich-editor.bundle.js` is committed and lazy-imported at runtime — never run npm/vite to launch the frontend.
+- Rich text editor: source + npm project in `editor-src/` (ProseMirror incl. prosemirror-markdown, vite). Build once with `cd editor-src && npm install && npm run build`; output `web/scripts/vendor/rich-editor.bundle.js` is committed and lazy-imported at runtime — never run npm/vite to launch the frontend. String values autodetect their format (HTML vs Markdown vs plain) and the rich editor round-trips whichever format it detected; mode state is keyed by property path, not node id.
 - `serde_json` is built with `preserve_order` (IndexMap): without it, every content/config save silently alphabetized JSON keys and destroyed document order. Don't remove the feature.
 - API responses send `Cache-Control: no-store` (main.rs wrap_fn) — the panel must always reflect disk; browsers otherwise heuristically cache `GET /api/...` and show stale files after edits.
 - `projects/` holds independent clones of target website repos (separate Git repositories nested inside this tree). They must never be committed to this repo; removing a project from config must not delete its checkout.

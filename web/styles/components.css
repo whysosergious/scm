@@ -627,6 +627,32 @@ input[type="text"].title-input.invalid {
   resize: vertical;
   line-height: 1.5;
   field-sizing: content; /* native auto-size where supported */
+
+  /* themed corner grip (native zigzag is hidden below) */
+  background-image: linear-gradient(
+    135deg,
+    transparent 0 42%,
+    var(--color-outline) 42% 50%,
+    transparent 50% 58%,
+    var(--color-outline) 58% 66%,
+    transparent 66%
+  );
+  background-repeat: no-repeat;
+  background-position: right 3px bottom 3px;
+  background-size: 11px 11px;
+}
+.prop-body textarea.value-input::-webkit-resizer {
+  background: transparent;
+}
+.prop-body textarea.value-input:focus {
+  background-image: linear-gradient(
+    135deg,
+    transparent 0 42%,
+    var(--color-on-surface-variant) 42% 50%,
+    transparent 50% 58%,
+    var(--color-on-surface-variant) 58% 66%,
+    transparent 66%
+  );
 }
 .prop-row.collapsed .prop-body {
   display: none;

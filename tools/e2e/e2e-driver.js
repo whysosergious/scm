@@ -7,7 +7,7 @@ const results=[];
 function report(n,ok,x=''){results.push(`${ok?'PASS':'FAIL'}: ${n}${x?' — '+x:''}`);}
 function paint(){document.getElementById('e2e-results').textContent=results.join('\n');
   document.title=results.some(r=>r.startsWith('FAIL'))?'E2E-FAIL':'E2E-OK';}
-async function phase(n,fn){try{await fn();report(n,true);}catch(e){report(n,false,e.message);}}
+async function phase(n,fn){try{await fn();report(n,true);}catch(e){report(n,false,e.message);}paint();}
 const $q=(s,r=document)=>r.querySelector(s);
 const $$q=(s,r=document)=>[...r.querySelectorAll(s)];
 const $$=$$q;
@@ -225,6 +225,48 @@ async function dragRow(sourceRow,targetY){
    const text=await (await fetch('/api/projects/demo-site/content/posts.json?cb='+Date.now())).text();
    const doc=JSON.parse(text);
    if(Object.keys(doc)[0]!=='website'||!doc.website.id) throw new Error('server state wrong: '+Object.keys(doc));
+ });
+
+ await phase('markdown autodetect + round-trip', async ()=>{
+   // posts[0].title was never mode-touched → autodetect applies cleanly.
+   const posts=rowByName('posts');
+   const entry=kidRows(ownList(posts))[0];
+   const titleRow=$$('.field-item.prop-row',$q('.prop-body',entry))
+     .find(r=>$q('.title-input',r)?.value==='title');
+   if(!titleRow) throw new Error('title row missing');
+   $$('.mode-btn',titleRow).find(b=>b.title==='Resizable text field').click();
+   await sleep(200);
+   const entry2=kidRows(ownList(rowByName('posts')))[0];
+   const titleRow2=$$('.field-item.prop-row',$q('.prop-body',entry2))
+     .find(r=>$q('.title-input',r)?.value==='title');
+   const ta=$q('textarea.value-input',titleRow2);
+   if(!ta) throw new Error('textarea missing');
+   ta.value='## Heading\n\n- one\n- two with **bold**';
+   ta.dispatchEvent(new Event('input',{bubbles:true}));
+   await sleep(150);
+   // save the markdown, then reopen: fresh parse must autodetect rich/md
+   $$('.btn-save').find(b=>b.textContent==='Save').click();
+   await until(()=>$$q('.toast-message').some(t=>t.textContent.includes('Saved')),8000,'saved toast');
+   await sleep(300);
+   $$q('#content-nav .nav-item').find(a=>a.textContent.includes('posts.json')).click();
+   await sleep(300);
+   $$q('#content-nav .nav-item').find(a=>a.textContent.includes('posts.json')).click();
+   await sleep(500);
+   const posts3=rowByName('posts');
+   const entry3=kidRows(ownList(posts3))[0];
+   const titleRow3=$$('.field-item.prop-row',$q('.prop-body',entry3))
+     .find(r=>$q('.title-input',r)?.value==='title');
+   const richBtn=$$('.mode-btn',titleRow3).find(b=>b.title==='Rich text');
+   if(!richBtn.classList.contains('active')) throw new Error('markdown not autodetected');
+   const rte=$q('rich-text-editor',titleRow3);
+   if(!rte||rte.getAttribute('format')!=='markdown') throw new Error('format wrong: '+rte?.getAttribute('format'));
+   if(!rte.value.includes('**bold**')||!rte.value.includes('Heading')) throw new Error('md content lost: '+rte.value.slice(0,60));
+   // markdown round-trip: serialization stays markdown
+   rte.value='## Heading\n\n- one\n- two with [a link](https://x.y)';
+   rte.dispatchEvent(new Event('input',{bubbles:true}));
+   await sleep(150);
+   const src=rte.value;
+   if(src.includes('<p>')||!src.includes('[a link]')) throw new Error('md round-trip broken: '+src.slice(0,80));
  });
 
  paint();
