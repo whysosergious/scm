@@ -4,7 +4,6 @@
 import { api, ApiError } from '../api.js';
 import { el, icon } from '../dom.js';
 import { selectedProject, state } from '../state.js';
-import { renderProjectInfo } from './project-info.js';
 import { toast, toastError } from './toast.js';
 
 const VIEW_KEY = 'scm:media-view';
@@ -44,11 +43,6 @@ export function renderMedia(root) {
   const mediaDirLabel = state.mediaDir || 'media';
   const wrap = el('div', { class: 'media-view' });
 
-  // Info panel (project info + git status + publish, matches content view)
-  const stack = document.createElement('div');
-  root.append(stack);
-  renderProjectInfo(stack);
-
   wrap.append(
     el('div', { class: 'header-section' },
       el('h1', { text: 'Media' }),
@@ -79,10 +73,8 @@ export function renderMedia(root) {
     class: 'media-container',
     'data-mode': viewMode,
   });
-  wrap.append(
-    el('div', { class: 'media-loading muted-note', text: 'Loading\u2026' }),
-    container,
-  );
+  const loadingEl = el('div', { class: 'media-loading muted-note', text: 'Loading\u2026' });
+  wrap.append(loadingEl, container);
   root.append(wrap);
 
   // ---- upload ----
@@ -108,6 +100,7 @@ export function renderMedia(root) {
   // ---- list ----
   api.listMedia(project.id)
     .then((data) => {
+      loadingEl.remove();
       const files = data.files || [];
       container.textContent = '';
 
@@ -127,6 +120,7 @@ export function renderMedia(root) {
       });
     })
     .catch((err) => {
+      loadingEl.remove();
       container.textContent = '';
       container.append(
         el('div', { class: 'empty-state media-empty' },

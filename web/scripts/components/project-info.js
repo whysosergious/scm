@@ -1,5 +1,5 @@
-// Project info panel: repo/branch/content_dir + checkout facts + publish
-// action + git status (spec §14 areas: project info, git status, publish).
+// Project info panel: fixed bottom status bar with collapse/expand,
+// checkout status, git status, and publish action.
 
 import { api } from '../api.js';
 import { el, icon } from '../dom.js';
@@ -19,54 +19,78 @@ const OUTCOME_STYLE = {
   invalid_repo: ['error', 'folder_off', 'Invalid repository'],
 };
 
-export function renderProjectInfo(root) {
+const COLLAPSE_KEY = 'scm:status-collapsed';
+
+export function renderProjectInfo() {
+  const bar = document.getElementById('status-bar');
+  if (!bar) return;
+  bar.textContent = '';
+
   const project = selectedProject();
-  if (!project) return;
-  if (state.view === 'settings') return;
-
-  const box = el('div', { class: 'field-item info-panel' });
-  const content = el('div', { class: 'field-content' });
-  const head = el('div', { class: 'status-head' }, icon('folder_open', 16));
-
-  head.append(el('span', { class: 'mono-label', text: project.id }));
-
-  if (!project.checkout || !project.checkout.exists) {
-    head.append(el('span', { class: 'badge warn', text: 'not cloned' }));
-    content.append(head);
-    box.append(content);
-    root.append(box);
+  if (!project || state.view === 'settings') {
+    bar.style.display = 'none';
     return;
   }
+  bar.style.display = '';
 
-  const c = project.checkout;
-  if (c.remote_matches === true && c.branch_ready) {
-    head.append(el('span', { class: 'badge ok', text: 'ready' }));
+  const collapsed = localStorage.getItem(COLLAPSE_KEY) !== '0';
+  bar.classList.toggle('collapsed', collapsed);
+
+  // --- collapsed row: always present ---
+  const row = el('div', { class: 'status-row' });
+  const left = el('div', { class: 'status-left' });
+  left.append(icon('folder_open', 14));
+  left.append(el('span', { class: 'mono-label', text: project.id }));
+
+  if (!project.checkout || !project.checkout.exists) {
+    left.append(el('span', { class: 'badge warn', text: 'not cloned' }));
   } else {
-    head.append(
-      el('span', {
+    const c = project.checkout;
+    if (c.remote_matches === true && c.branch_ready) {
+      left.append(el('span', { class: 'badge ok', text: 'ready' }));
+    } else {
+      left.append(el('span', {
         class: 'badge warn',
         text: !c.remote_matches ? 'remote mismatch' : 'branch missing',
-      }),
-    );
+      }));
+    }
+    left.append(el('span', { class: 'muted-note', text: `${project.branch} \u00b7 ${project.content_dir}/` }));
   }
 
-  content.append(head);
-  content.append(
-    el('div', { class: 'muted-note mono-note', text: `${project.repo} → ${project.branch} · ${project.content_dir}/` }),
-  );
-
-  // Git status sub-panel
-  const statusSlot = el('div');
-  renderStatusPanel(statusSlot);
-  content.append(statusSlot);
-
-  // Publish button
-  const publishBtn = el('button', { class: 'btn-save' }, icon('cloud_upload', 14), 'Publish…');
+  const right = el('div', { class: 'status-right' });
+  const publishBtn = el('button', { class: 'btn-sm btn-publish' }, icon('cloud_upload', 13), ' Publish');
   publishBtn.addEventListener('click', () => doPublish(publishBtn));
-  content.append(publishBtn);
+  right.append(publishBtn);
 
-  box.append(content);
-  root.append(box);
+  const toggleBtn = el('button', {
+    class: 'btn-icon status-toggle',
+    title: collapsed ? 'Expand' : 'Collapse',
+    onclick: () => {
+      const next = localStorage.getItem(COLLAPSE_KEY) === '0' ? '1' : '0';
+      localStorage.setItem(COLLAPSE_KEY, next);
+      renderProjectInfo();
+    },
+  }, icon(collapsed ? 'expand_less' : 'expand_more', 18));
+  right.append(toggleBtn);
+
+  row.append(left, right);
+  bar.append(row);
+
+  // --- expanded details ---
+  if (!collapsed) {
+    const details = el('div', { class: 'status-details' });
+
+    details.append(
+      el('div', { class: 'muted-note mono-note', text: `${project.repo} \u2192 ${project.branch}` }),
+    );
+
+    // Git status sub-panel
+    const statusSlot = el('div');
+    renderStatusPanel(statusSlot);
+    details.append(statusSlot);
+
+    bar.append(details);
+  }
 }
 
 async function doPublish(btn) {
@@ -75,7 +99,7 @@ async function doPublish(btn) {
 
   const s = state.gitStatus;
   if (s.clean && s.ahead === 0) {
-    toast('Nothing to publish — working tree is clean');
+    toast('Nothing to publish \u2014 working tree is clean');
     return;
   }
 
@@ -83,7 +107,7 @@ async function doPublish(btn) {
   if (message === null) return;
 
   btn.disabled = true;
-  btn.textContent = 'Publishing…';
+  btn.textContent = 'Publishing\u2026';
   try {
     const result = await api.publish(project.id, message);
     const [kind, iconName, prefix] = OUTCOME_STYLE[result.outcome] || ['error', 'error', result.outcome];
@@ -94,6 +118,6 @@ async function doPublish(btn) {
   } finally {
     btn.disabled = false;
     btn.textContent = '';
-    btn.append(icon('cloud_upload', 14), 'Publish…');
+    btn.append(icon('cloud_upload', 13), ' Publish');
   }
 }

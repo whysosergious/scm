@@ -13,13 +13,23 @@ import { toast, toastError } from './components/toast.js';
 
 const $ = (id) => document.getElementById(id);
 
+const SIDEBAR_KEY = 'scm:sidebar-collapsed';
+
 // Sidebar toggle: arrow points in the direction the sidebar will go.
-$('toggle-sidebar').addEventListener('click', () => {
-  const collapsed = $('sidebar').classList.toggle('collapsed');
+function setSidebarCollapsed(collapsed) {
+  $('sidebar').classList.toggle('collapsed', collapsed);
   const icon = document.querySelector('#toggle-sidebar .material-symbols-outlined');
   if (icon) icon.textContent = collapsed ? 'chevron_right' : 'chevron_left';
   $('toggle-sidebar').title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0');
+}
+
+$('toggle-sidebar').addEventListener('click', () => {
+  setSidebarCollapsed($('sidebar').classList.toggle('collapsed'));
 });
+
+// Restore sidebar state on boot
+setSidebarCollapsed(localStorage.getItem(SIDEBAR_KEY) === '1');
 
 // Settings nav toggles the config editor view.
 $('nav-settings').addEventListener('click', (e) => {
@@ -37,6 +47,7 @@ function render() {
   renderProjectSelector($('header-title'));
   renderContentNav($('content-nav'));
   renderHeaderStatus($('header-status'));
+  renderProjectInfo();
 
   // nav active states follow the current view
   const mediaActive = state.view === 'media';
@@ -67,9 +78,6 @@ function render() {
     return;
   }
 
-  const stack = document.createElement('div');
-  root.append(stack);
-  renderProjectInfo(stack);
   renderEditor(root);
 }
 
