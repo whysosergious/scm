@@ -50,7 +50,7 @@ The first version does not require:
 
 ### Frontend
 
-- Standard HTML, standard CSS, vanilla JavaScript ES modules.
+- Standard HTML, standard CSS, vanilla JavaScript ES modules with JSDoc typing.
 - Custom elements where useful; light DOM only — no automatic Shadow DOM.
 - No framework and no runtime bundler. The **single exception** is the rich text editor: ProseMirror is pre-built with vite from `web/editor-src/` into a self-contained, committed ES bundle (`web/scripts/vendor/rich-editor.bundle.js`) that the app lazy-imports at runtime. npm/vite are never needed to launch the frontend — only when changing the editor component.
 - The control panel is a fixed-viewport layout: only the canvas scrolls; sidebar and header stay put. Scrollbars are styled to match the theme.
@@ -235,14 +235,14 @@ Ids are stable per parse and drive drag-and-drop keys and collapse state. Model 
 
 ### 9.4 Value controls
 
-| Type | Control |
-|---|---|
-| String | one of three switchable modes, below |
-| Number | `<input type="number" step="any">` |
-| Boolean | toggle switch |
-| Null | disabled note reading `null` |
-| Object | recursive nested container + "Add property" |
-| Array | recursive nested container + "Add entry" |
+| Type    | Control                                     |
+| ------- | ------------------------------------------- |
+| String  | one of three switchable modes, below        |
+| Number  | `<input type="number" step="any">`          |
+| Boolean | toggle switch                               |
+| Null    | disabled note reading `null`                |
+| Object  | recursive nested container + "Add property" |
+| Array   | recursive nested container + "Add entry"    |
 
 Value areas are direct children of the row element and span its full width. Typing updates the model without re-rendering. Empty containers show muted hints.
 
@@ -250,11 +250,11 @@ Value areas are direct children of the row element and span its full width. Typi
 
 A compact three-button switcher sits above every string value control:
 
-| Mode | Icon | Control | Value semantics |
-|---|---|---|---|
-| Text input | `text_fields` | single-line `<input type="text">` | raw string |
-| Text field | `wrap_text` | auto-growing, vertically resizable textarea (themed corner grip) | raw string (multi-line) |
-| Rich text | `edit_note` | ProseMirror WYSIWYG with toolbar (bold/italic/code, lists, quote, undo/redo) | HTML **or** Markdown string |
+| Mode       | Icon          | Control                                                                      | Value semantics             |
+| ---------- | ------------- | ---------------------------------------------------------------------------- | --------------------------- |
+| Text input | `text_fields` | single-line `<input type="text">`                                            | raw string                  |
+| Text field | `wrap_text`   | auto-growing, vertically resizable textarea (themed corner grip)             | raw string (multi-line)     |
+| Rich text  | `edit_note`   | ProseMirror WYSIWYG with toolbar (bold/italic/code, lists, quote, undo/redo) | HTML **or** Markdown string |
 
 Rules:
 
@@ -273,7 +273,7 @@ Toolbar (format-aware — HTML-only controls are hidden in Markdown mode):
 - **Links** (`Ctrl+K`): prompt for URL, remove by clearing it.
 - **Images**: insert by URL + alt text; rendered between paragraphs, selectable, round-trips as `<img src alt>` (HTML) or `![alt](src)` (Markdown).
 - Text alignment (left/center/right/justify) — HTML format only.
-- Markdown-style input rules while typing (`# `, `> `, `- `, `1. `, ``` ``` ```), smart quotes, ellipsis and em-dash replacement; `linkify` for bare URLs.
+- Markdown-style input rules while typing (`# `, `> `, `- `, `1. `, ` ` ```), smart quotes, ellipsis and em-dash replacement; `linkify` for bare URLs.
 - Placeholder text for empty documents; live word/character count.
 
 ### 9.5.2 Images — current approach and roadmap
@@ -319,32 +319,32 @@ The publish endpoint returns HTTP 200 with a discriminated `outcome` covering ev
 
 The Rust application serves the control panel from `web/` and a JSON API under `/api`:
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/config` | current configuration (as stored) |
-| POST | `/api/config` | validate full document → atomic save → swap state |
-| GET | `/api/projects` | configured projects + live checkout status |
-| POST | `/api/projects` | import project (optional immediate clone) |
-| DELETE | `/api/projects/{id}` | remove from config only; disk untouched |
-| POST | `/api/projects/{id}/checkout` | clone-or-verify checkout |
-| POST | `/api/projects/{id}/ensure-content-dir` | create missing content dir |
-| GET/POST | `/api/projects/{id}/content` | list `.json` entries / create file |
-| GET/PUT | `/api/projects/{id}/content/{name}` | load raw / validate + save |
-| GET | `/api/projects/{id}/git/status` | parsed porcelain status |
-| GET | `/api/projects/{id}/media` | list media files |
-| GET | `/api/projects/{id}/media/{name}` | serve media file (raw) |
-| POST | `/api/projects/{id}/media` | upload media (raw bytes, dedup) |
-| POST | `/api/projects/{id}/media/{name}/rename` | rename media (409 on conflict) |
-| DELETE | `/api/projects/{id}/media/{name}` | delete media file |
-| GET | `/api/projects/{id}/pages` | list page JSON files |
-| GET | `/api/projects/{id}/pages/{name}` | load page JSON |
-| POST | `/api/projects/{id}/pages` | create page |
-| PUT | `/api/projects/{id}/pages/{name}` | save page JSON |
-| DELETE | `/api/projects/{id}/pages/{name}` | delete non-index page |
-| POST | `/api/projects/{id}/pages/{name}/generate` | generate static HTML |
-| POST | `/api/projects/{id}/pages/import` | import HTML into page JSON |
-| GET | `/api/projects/{id}/pages/{name}/preview` | serve generated HTML |
-| POST | `/api/projects/{id}/publish` | stage → commit → push |
+| Method   | Path                                       | Purpose                                           |
+| -------- | ------------------------------------------ | ------------------------------------------------- |
+| GET      | `/api/config`                              | current configuration (as stored)                 |
+| POST     | `/api/config`                              | validate full document → atomic save → swap state |
+| GET      | `/api/projects`                            | configured projects + live checkout status        |
+| POST     | `/api/projects`                            | import project (optional immediate clone)         |
+| DELETE   | `/api/projects/{id}`                       | remove from config only; disk untouched           |
+| POST     | `/api/projects/{id}/checkout`              | clone-or-verify checkout                          |
+| POST     | `/api/projects/{id}/ensure-content-dir`    | create missing content dir                        |
+| GET/POST | `/api/projects/{id}/content`               | list `.json` entries / create file                |
+| GET/PUT  | `/api/projects/{id}/content/{name}`        | load raw / validate + save                        |
+| GET      | `/api/projects/{id}/git/status`            | parsed porcelain status                           |
+| GET      | `/api/projects/{id}/media`                 | list media files                                  |
+| GET      | `/api/projects/{id}/media/{name}`          | serve media file (raw)                            |
+| POST     | `/api/projects/{id}/media`                 | upload media (raw bytes, dedup)                   |
+| POST     | `/api/projects/{id}/media/{name}/rename`   | rename media (409 on conflict)                    |
+| DELETE   | `/api/projects/{id}/media/{name}`          | delete media file                                 |
+| GET      | `/api/projects/{id}/pages`                 | list page JSON files                              |
+| GET      | `/api/projects/{id}/pages/{name}`          | load page JSON                                    |
+| POST     | `/api/projects/{id}/pages`                 | create page                                       |
+| PUT      | `/api/projects/{id}/pages/{name}`          | save page JSON                                    |
+| DELETE   | `/api/projects/{id}/pages/{name}`          | delete non-index page                             |
+| POST     | `/api/projects/{id}/pages/{name}/generate` | generate static HTML                              |
+| POST     | `/api/projects/{id}/pages/import`          | import HTML into page JSON                        |
+| GET      | `/api/projects/{id}/pages/{name}/preview`  | serve generated HTML                              |
+| POST     | `/api/projects/{id}/publish`               | stage → commit → push                             |
 
 Errors use `{"error": {category, message, detail}}` with categories `config`, `invalid-json`, `not-found`, `git`, `filesystem`, `network-remote`, `internal`. API responses carry `Cache-Control: no-store` so the panel always reflects disk.
 
@@ -431,13 +431,13 @@ Each project entry gains an optional `media_dir` property (default `"./public/me
 
 All under `/api/projects/{id}/media`, operating strictly inside `<checkout>/<media_dir>` (traversal-proof; names are validated single path components with an image extension allow-list: png, jpg, jpeg, gif, webp, svg, avif, ico, bmp).
 
-| Method | Path | Purpose | Response |
-|---|---|---|---|
-| GET | `/media` | list files | `{ media_dir, files: [{ name, size, url, modified }] }` |
-| GET | `/media/{name}` | serve raw file (correct image content-type) | binary |
-| POST | `/media?filename=…` | upload (raw bytes, ≤20 MB, dedup `name-2.ext`…) | `201 { url, file }` |
-| POST | `/media/{name}/rename` | rename; body `{name}`; 409 on conflict | `{ renamed, url }` |
-| DELETE | `/media/{name}` | delete file | `{ deleted }` |
+| Method | Path                   | Purpose                                         | Response                                                |
+| ------ | ---------------------- | ----------------------------------------------- | ------------------------------------------------------- |
+| GET    | `/media`               | list files                                      | `{ media_dir, files: [{ name, size, url, modified }] }` |
+| GET    | `/media/{name}`        | serve raw file (correct image content-type)     | binary                                                  |
+| POST   | `/media?filename=…`    | upload (raw bytes, ≤20 MB, dedup `name-2.ext`…) | `201 { url, file }`                                     |
+| POST   | `/media/{name}/rename` | rename; body `{name}`; 409 on conflict          | `{ renamed, url }`                                      |
+| DELETE | `/media/{name}`        | delete file                                     | `{ deleted }`                                           |
 
 Notes:
 

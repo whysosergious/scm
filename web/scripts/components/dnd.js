@@ -5,18 +5,28 @@
 import * as model from '../json-model.js';
 import { el } from '../dom.js';
 
+/** Returns whether the user prefers reduced motion (no animations). */
 const REDUCED = () =>
   window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
 /**
- * Wire a row's drag handle.
+ * Wire a row's drag handle for cross-parent pointer-based drag & drop.
+ * Registers pointer listeners on `handle`; the row can be moved between
+ * any container in the tree. Drop targets are validated against a
+ * parent→child compatibility matrix to prevent cycles. FLIP-less
+ * layout respects `prefers-reduced-motion`.
  *
- * api must expose:
- *   tree            root node
- *   render()        full re-render from the current tree
- *   onDirty()       dirty-state callback
- *   collapsed       Set of collapsed node ids
- *   expand(id)      expand one node (used for hover-to-expand)
+ * @param {object} opts - Drag configuration.
+ * @param {HTMLElement} opts.handle - The element that initiates the drag on pointerdown.
+ * @param {HTMLElement} opts.row - The DOM row element representing the draggable node.
+ * @param {object} opts.api - Editor API object exposed by the form editor.
+ * @param {object} opts.api.tree - The root tree node (json-model).
+ * @param {Function} opts.api.render - Full re-render from the current tree.
+ * @param {Function} [opts.api.onDirty] - Dirty-state callback invoked after a successful move.
+ * @param {Set<number>} opts.api.collapsed - Set of collapsed node ids.
+ * @param {Function} opts.api.expand - Expand one node (used for hover-to-expand).
+ * @param {number} opts.nodeId - The id of the node to drag.
+ * @returns {void}
  */
 export function enableDrag({ handle, row, api, nodeId }) {
   handle.addEventListener('pointerdown', (e) => start(e));

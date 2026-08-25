@@ -4,6 +4,11 @@ import { el, icon } from '../dom.js';
 import { selectedProject, state } from '../state.js';
 import { refreshGitStatus } from '../state.js';
 
+/**
+ * Renders the compact header status indicator: a colored dot and a text
+ * summary of branch, ahead/behind counts, and changed file count.
+ * @param {HTMLElement} container - DOM element to render into (preserves existing dot/summary nodes if present)
+ */
 export function renderHeaderStatus(container) {
   let dot = container.querySelector('.status-dot');
   let summary = container.querySelector('.header-summary');
@@ -42,6 +47,11 @@ export function renderHeaderStatus(container) {
   }
 }
 
+/**
+ * Renders the detailed git status panel showing branch name, upstream,
+ * refresh button, and a list of changed files with XY status codes.
+ * @param {HTMLElement} container - DOM element to render into
+ */
 export function renderStatusPanel(container) {
   container.textContent = '';
   const project = selectedProject();

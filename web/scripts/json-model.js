@@ -1,12 +1,26 @@
 // Pure tree model for the JSON form editor (spec.md §9.2).
 // No DOM access here — everything is testable without a browser.
 
+/**
+ * Canonical list of value types a tree node can hold.
+ * @type {Array<'string' | 'number' | 'boolean' | 'object' | 'array' | 'null'>}
+ */
 export const TYPES = ['string', 'number', 'boolean', 'object', 'array', 'null'];
 
 const SCALARS = new Set(['string', 'number', 'boolean']);
 
 let nextId = 1;
 
+/**
+ * Create a tree node with defaults, merged with any provided partial fields.
+ * Each node gets a unique auto-incrementing `id`.
+ * @param {Object} [partial] - Fields to override on the default node.
+ * @param {string} [partial.key] - Property key (empty for array entries).
+ * @param {string} [partial.type] - One of the TYPES values.
+ * @param {*} [partial.value] - Scalar value (only for string/number/boolean).
+ * @param {Array<Object>} [partial.children] - Child nodes (object/array only).
+ * @returns {Object} A new tree node.
+ */
 function makeNode(partial) {
   return {
     id: nextId++,
@@ -25,6 +39,10 @@ function makeNode(partial) {
  * JS objects reorder integer-like keys ("1", "42", …) to the front, which
  * would destroy document order — the thing this model exists to preserve.
  * Throws SyntaxError on malformed input, like JSON.parse would.
+ *
+ * @param {string} text - Raw JSON string to parse.
+ * @returns {Object} The root tree node.
+ * @throws {SyntaxError} When the input is not valid JSON.
  */
 export function parse(text) {
   nextId = 1;
@@ -174,11 +192,20 @@ export function parse(text) {
  *
  * Emits text directly from the tree — routing through a plain object would
  * reorder integer-like keys at enumeration time.
+ *
+ * @param {Object} root - The root tree node to serialize.
+ * @returns {string} Pretty-printed JSON string ending with `\n`.
  */
 export function serialize(root) {
   return encodeNode(root, 0) + '\n';
 }
 
+/**
+ * Recursively encode a single node to its JSON text representation.
+ * @param {Object} node - The node to encode.
+ * @param {number} depth - Current indentation depth (each level = 2 spaces).
+ * @returns {string} JSON text for this node (without surrounding whitespace).
+ */
 function encodeNode(node, depth) {
   const pad = '  '.repeat(depth);
   const inner = '  '.repeat(depth + 1);
@@ -208,15 +235,30 @@ function encodeNode(node, depth) {
   }
 }
 
+/**
+ * Check whether a node is a container (object or array).
+ * @param {Object} node - The tree node to test.
+ * @returns {boolean} `true` if the node has children.
+ */
 export function isContainer(node) {
   return node.type === 'object' || node.type === 'array';
 }
 
+/**
+ * Return the number of children a node has (0 for leaf nodes).
+ * @param {Object} node - The tree node.
+ * @returns {number} Child count.
+ */
 export function childCount(node) {
   return node.children ? node.children.length : 0;
 }
 
-/** Depth-first search by node id. */
+/**
+ * Depth-first search by node id.
+ * @param {Object} root - The root of the tree to search.
+ * @param {number} id - The unique node id to find.
+ * @returns {Object|null} The matching node, or `null` if not found.
+ */
 export function findNode(root, id) {
   if (root.id === id) return root;
   for (const c of root.children) {
@@ -230,6 +272,10 @@ export function findNode(root, id) {
  * Stable-ish path of a node: segments are object keys or array indices,
  * e.g. ['website', 'name'] or ['posts', 0, 'title']. Used for UI state
  * keys that should survive re-parsing (unlike node ids).
+ *
+ * @param {Object} root - The root tree node.
+ * @param {Object} node - The target node to locate.
+ * @returns {Array<string|number>} Path segments from root to `node`.
  */
 export function nodePath(root, node) {
   const segments = [];
@@ -244,7 +290,12 @@ export function nodePath(root, node) {
   return segments;
 }
 
-/** The immediate parent of the node with the given id, or null for root. */
+/**
+ * The immediate parent of the node with the given id, or null for root.
+ * @param {Object} root - The root tree node.
+ * @param {number} id - The id of the child node.
+ * @returns {Object|null} The parent node, or `null` if `id` is the root.
+ */
 export function findParent(root, id) {
   for (const c of root.children) {
     if (c.id === id) return root;
@@ -254,7 +305,12 @@ export function findParent(root, id) {
   return null;
 }
 
-/** Is `id` found anywhere inside `subtree` (inclusive)? */
+/**
+ * Is `id` found anywhere inside `subtree` (inclusive)?
+ * @param {Object} subtree - The subtree root to search within.
+ * @param {number} id - The node id to look for.
+ * @returns {boolean} `true` if `id` is `subtree` itself or a descendant.
+ */
 export function isWithin(subtree, id) {
   if (subtree.id === id) return true;
   return subtree.children.some((c) => isWithin(c, id));
@@ -263,6 +319,11 @@ export function isWithin(subtree, id) {
 /**
  * Rename a child of an object node.
  * Returns {ok:true} or {ok:false, error:'...'} without mutating on failure.
+ *
+ * @param {Object} parent - The parent object node.
+ * @param {Object} child - The child node to rename.
+ * @param {string} newKey - The new property name.
+ * @returns {{ok: true} | {ok: false, error: string}} Result of the rename attempt.
  */
 export function renameKey(parent, child, newKey) {
   const name = String(newKey ?? '').trim();
@@ -273,7 +334,12 @@ export function renameKey(parent, child, newKey) {
   return { ok: true };
 }
 
-/** First available `base`, `base2`, `base3`, … among an object's children. */
+/**
+ * First available `base`, `base2`, `base3`, … among an object's children.
+ * @param {Object} parent - The parent object node.
+ * @param {string} [base='property'] - The base name to deduplicate.
+ * @returns {string} A unique key not already used by a sibling.
+ */
 export function uniqueKey(parent, base = 'property') {
   const taken = new Set(parent.children.map((c) => c.key));
   if (!taken.has(base)) return base;
@@ -285,6 +351,9 @@ export function uniqueKey(parent, base = 'property') {
 /**
  * Convert a node to another type applying the smart-coercion table
  * (spec.md §9.5). Mutates the node.
+ *
+ * @param {Object} node - The node to convert (mutated in place).
+ * @param {string} type - Target type, one of the TYPES values.
  */
 export function convertType(node, type) {
   if (!TYPES.includes(type) || node.type === type) return;
@@ -341,6 +410,12 @@ export function convertType(node, type) {
   }
 }
 
+/**
+ * Mutate a node to a new type, clearing value/children and applying overrides.
+ * @param {Object} node - The node to mutate.
+ * @param {string} type - New type for the node.
+ * @param {Object} patch - Additional fields to merge onto the node.
+ */
 function become(node, type, patch) {
   node.type = type;
   node.value = null;
@@ -348,12 +423,21 @@ function become(node, type, patch) {
   Object.assign(node, patch);
 }
 
+/**
+ * Parse a string to a number, returning 0 on NaN.
+ * @param {string} s - The string to convert.
+ * @returns {number} The parsed number or 0.
+ */
 function numOrZero(s) {
   const n = Number(s);
   return Number.isNaN(n) ? 0 : n;
 }
 
-/** Compact single-line JSON encoding (used for coercion to string/number). */
+/**
+ * Compact single-line JSON encoding (used for coercion to string/number).
+ * @param {Object} node - The node to encode.
+ * @returns {string} A single-line JSON representation.
+ */
 function encodeCompact(node) {
   switch (node.type) {
     case 'object':
@@ -388,6 +472,12 @@ function encodeCompact(node) {
  * - moving into an array clears the key; moving a keyless entry into an
  *   object generates a unique key;
  * - returns true when the tree changed.
+ *
+ * @param {Object} root - The root tree node (needed for `findParent`).
+ * @param {Object} node - The node to move.
+ * @param {Object} targetParent - The destination container node.
+ * @param {number} index - Post-removal insertion index in the target.
+ * @returns {boolean} `true` if the tree was modified.
  */
 export function moveNode(root, node, targetParent, index) {
   if (!isContainer(targetParent)) return false;
@@ -414,7 +504,12 @@ export function moveNode(root, node, targetParent, index) {
   return true;
 }
 
-/** Remove a node from its parent. Returns true when removed. */
+/**
+ * Remove a node from its parent. Returns true when removed.
+ * @param {Object} root - The root tree node.
+ * @param {Object} node - The node to remove.
+ * @returns {boolean} `true` if the node was found and removed.
+ */
 export function removeNode(root, node) {
   const parent = findParent(root, node.id);
   if (!parent) return false;
@@ -422,6 +517,11 @@ export function removeNode(root, node) {
   return true;
 }
 
+/**
+ * Recursively deep-clone a node (does not assign a new id).
+ * @param {Object} node - The node to clone.
+ * @returns {Object} A deep copy of the node.
+ */
 function deepClone(node) {
   const copy = makeNode({
     key: node.key,
@@ -437,6 +537,10 @@ function deepClone(node) {
  * (spec.md §9.3). Object copies get a unique key derived from the
  * original (`name` → `name2`); array copies need none. Returns the new node
  * or null when `node` has no parent (root).
+ *
+ * @param {Object} root - The root tree node.
+ * @param {Object} node - The node to duplicate.
+ * @returns {Object|null} The newly created clone, or `null` if `node` is root.
  */
 export function cloneNode(root, node) {
   const parent = findParent(root, node.id);
@@ -449,7 +553,13 @@ export function cloneNode(root, node) {
   return copy;
 }
 
-/** Append a fresh child of `type` to a container; returns the child. */
+/**
+ * Append a fresh child of `type` to a container; returns the child.
+ * @param {Object} parent - The container node (object or array).
+ * @param {string} [type='string'] - The type for the new child.
+ * @param {string} [key] - Explicit key for object children (auto-generated if omitted).
+ * @returns {Object} The newly created child node.
+ */
 export function addChild(parent, type = 'string', key = undefined) {
   const child = makeNode({ key: '', type: 'null' });
   if (SCALARS.has(type)) child.value = type === 'string' ? '' : type === 'number' ? 0 : false;

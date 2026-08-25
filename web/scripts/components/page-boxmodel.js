@@ -3,8 +3,16 @@
 
 import { el } from '../dom.js';
 
-const STEP = 1; // px per pixel of drag
+/** @type {number} Pixels of value change per pixel of pointer drag. */
+const STEP = 1;
 
+/**
+ * Renders the box model control (d/p/m buttons and floating panel) for a node.
+ * @param {HTMLElement} canvasEl - The canvas container element.
+ * @param {Object|null} node - The page node to display box model for, or null to clear.
+ * @param {function(): void} onChange - Callback invoked when a style value is scrubbed.
+ * @returns {void}
+ */
 export function renderBoxModel(canvasEl, node, onChange) {
   clearBoxModel(canvasEl);
   if (!node) return;
@@ -75,12 +83,24 @@ export function renderBoxModel(canvasEl, node, onChange) {
   if (pl) pl.appendChild(btnWrap);
 }
 
+/**
+ * Removes all box model control elements from the canvas.
+ * @param {HTMLElement} canvasEl - The canvas container element.
+ * @returns {void}
+ */
 export function clearBoxModel(canvasEl) {
   canvasEl.querySelectorAll('.bm-buttons, .bm-panel').forEach((n) => n.remove());
 }
 
 // ================== DIMENSIONS ==================
 
+/**
+ * Renders the width/height dimension controls with drag-to-scrub.
+ * @param {HTMLElement} panel - The panel element to render into.
+ * @param {Object} node - The page node with styles.width and styles.height.
+ * @param {function(): void} onChange - Callback invoked when a value is modified.
+ * @returns {void}
+ */
 function renderDimensions(panel, node, onChange) {
   const title = el('div', { class: 'bm-title', text: 'Dimensions' });
   panel.append(title);
@@ -121,6 +141,14 @@ function renderDimensions(panel, node, onChange) {
 
 // ================== SIDES (padding/margin) ==================
 
+/**
+ * Renders the four-side (top/right/bottom/left) padding or margin controls with drag-to-scrub.
+ * @param {HTMLElement} panel - The panel element to render into.
+ * @param {Object} node - The page node with styles for the given mode.
+ * @param {string} mode - 'p' for padding or 'm' for margin.
+ * @param {function(): void} onChange - Callback invoked when a value is modified.
+ * @returns {void}
+ */
 function renderSides(panel, node, mode, onChange) {
   const label = mode === 'p' ? 'Padding' : 'Margin';
   const prop = mode === 'p' ? 'padding' : 'margin';
@@ -166,6 +194,13 @@ function renderSides(panel, node, mode, onChange) {
 
 // ================== DRAG TO SCRUB ==================
 
+/**
+ * Attaches pointer-drag-to-scrub behavior to an element. Dragging modifies a numeric value.
+ * @param {HTMLElement} element - The element to make draggable for scrubbing.
+ * @param {function(number): void} onChange - Callback invoked with delta in pixels per drag step.
+ * @param {boolean} [vertical=false] - If true, scrub vertically (ns-resize cursor); otherwise horizontally.
+ * @returns {void}
+ */
 function makeDragScrub(element, onChange, vertical = false) {
   element.style.touchAction = 'none';
   element.addEventListener('pointerdown', (e) => {
@@ -199,6 +234,11 @@ function makeDragScrub(element, onChange, vertical = false) {
 
 // ================== HELPERS ==================
 
+/**
+ * Parses a CSS pixel value string into a number.
+ * @param {string|number} val - CSS value like '10px', '0', or a number.
+ * @returns {number} Parsed integer value, or 0 if unparseable.
+ */
 function parsePx(val) {
   if (typeof val === 'number') return val;
   const s = String(val).trim();

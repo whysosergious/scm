@@ -13,11 +13,21 @@ import { renderMedia } from './components/media.js';
 import { renderPageEditor } from './components/page-editor.js';
 import { toast, toastError } from './components/toast.js';
 
+/**
+ * Shorthand for `document.getElementById`.
+ * @param {string} id - The element ID to look up.
+ * @returns {HTMLElement} The matching element.
+ */
 const $ = (id) => document.getElementById(id);
 
+/** @type {string} Local-storage key for sidebar collapsed state. */
 const SIDEBAR_KEY = 'scm:sidebar-collapsed';
 
-// Sidebar toggle: arrow points in the direction the sidebar will go.
+/**
+ * Toggle the sidebar collapsed/expanded state and persist the choice.
+ * The chevron icon points in the direction the sidebar will travel on next click.
+ * @param {boolean} collapsed - Whether the sidebar should be collapsed.
+ */
 function setSidebarCollapsed(collapsed) {
   $('sidebar').classList.toggle('collapsed', collapsed);
   const icon = document.querySelector('#toggle-sidebar .material-symbols-outlined');
@@ -45,6 +55,10 @@ $('nav-media').addEventListener('click', (e) => {
   patch({ view: 'media' });
 });
 
+/**
+ * Main render loop — called on every state change via `subscribe`.
+ * Delegates to per-view renderers and toggles active nav highlights.
+ */
 function render() {
   renderProjectSelector($('header-title'));
   renderContentNav($('content-nav'));
@@ -90,6 +104,12 @@ function render() {
 
 subscribe(render);
 
+/**
+ * Application bootstrap IIFE.
+ * Fetches project list, restores selection, lazily clones missing checkouts,
+ * then loads files/pages/git-status in parallel before marking the app ready.
+ * @returns {Promise<void>}
+ */
 (async function boot() {
   try {
     await refreshProjects();

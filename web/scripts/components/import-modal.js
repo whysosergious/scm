@@ -6,6 +6,12 @@ import { el } from '../dom.js';
 import { refreshProjects } from '../state.js';
 import { toast, toastError } from './toast.js';
 
+/**
+ * Open the import-project modal dialog.
+ * @param {Object} [opts] - Options.
+ * @param {boolean} [opts.dismissable=true] - Whether the modal can be closed by clicking outside.
+ * @returns {void}
+ */
 export function openImportModal({ dismissable = true } = {}) {
   const root = document.getElementById('modal-root');
   root.textContent = '';
@@ -14,6 +20,11 @@ export function openImportModal({ dismissable = true } = {}) {
   const submitBtn = el('button', { class: 'btn-save', type: 'submit' }, 'Import & clone');
   const fields = {};
 
+  /**
+   * Display an error message inside the modal.
+   * @param {Error|ApiError} err - The error to display.
+   * @returns {void}
+   */
   function showErr(err) {
     errBox.textContent = '';
     errBox.append(
@@ -77,6 +88,15 @@ export function openImportModal({ dismissable = true } = {}) {
     ),
   );
 
+  /**
+   * Build a labeled text input field and register it in the fields map.
+   * @param {string} labelText - Visible label for the field.
+   * @param {string} key - Field key used for submission.
+   * @param {string} placeholder - Placeholder text.
+   * @param {boolean} required - Whether the input is required.
+   * @param {string} [value=''] - Default value.
+   * @returns {HTMLElement} The wrapping div containing label + input.
+   */
   function field(labelText, key, placeholder, required, value = '') {
     const input = el('input', {
       type: 'text',
@@ -90,6 +110,11 @@ export function openImportModal({ dismissable = true } = {}) {
     return el('div', {}, el('label', { for: `imp-${key}`, text: labelText }), input);
   }
 
+  /**
+   * Wrap elements in a horizontal field-row container.
+   * @param {Array<HTMLElement>} cells - Elements to lay out side by side.
+   * @returns {HTMLElement} A div.field-row wrapping the cells.
+   */
   function row(...cells) {
     return el('div', { class: 'field-row' }, ...cells);
   }

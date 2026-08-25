@@ -2,18 +2,39 @@
 // Pure functions, zero DOM — mirrors the approach of json-model.js.
 // Manages page document structure, node operations, and nesting validation.
 
+/**
+ * @typedef {Object} PageNode
+ * @property {string} id - Unique node identifier (e.g. "node-1").
+ * @property {'box'|'text'|'image'} type - Node type.
+ * @property {Object<string, *>} props - Type-specific properties (element, value, src, alt, etc.).
+ * @property {Object<string, string>} [styles] - Inline CSS styles.
+ * @property {string[]} [classes] - CSS class names.
+ * @property {PageNode[]} [children] - Child nodes (only for box type).
+ */
+
 let nextId = 1;
 
+/** @type {string[]} All supported node types. */
 export const NODE_TYPES = ['box', 'text', 'image'];
 
+/** @type {string[]} HTML elements allowed for box nodes. */
 export const BOX_ELEMENTS = ['div', 'section', 'header', 'main', 'footer', 'article', 'aside'];
+
+/** @type {string[]} HTML elements allowed for text nodes. */
 export const TEXT_ELEMENTS = ['p', 'h1', 'h2', 'h3', 'span', 'blockquote'];
 
 // ================== NESTING RULES ==================
 
-// Parent→child compatibility matrix (spec_page_editor.md §10).
-// Returns true when a child of `childType`/`childElement` can be placed
-// inside a parent of `parentType`/`parentElement`.
+/**
+ * Check whether a child node can be placed inside a parent node.
+ * Implements the parent→child compatibility matrix from spec_page_editor.md §10.
+ *
+ * @param {'box'|'text'|'image'} parentType - Type of the parent node.
+ * @param {string} [parentElement] - HTML element of the parent (e.g. 'div', 'span').
+ * @param {'box'|'text'|'image'} childType - Type of the child node.
+ * @param {string} [childElement] - HTML element of the child (e.g. 'span', 'p').
+ * @returns {boolean} True if the child can nest inside the parent.
+ */
 export function canNest(parentType, parentElement, childType, childElement) {
   if (childType === 'image') return true; // Image goes anywhere valid
 
@@ -41,6 +62,14 @@ export function canNest(parentType, parentElement, childType, childElement) {
 
 // ================== NODE CREATION ==================
 
+/**
+ * Create a new page node with a generated id and default properties.
+ *
+ * @param {'box'|'text'|'image'} type - Node type.
+ * @param {Object<string, *>} [props={}] - Initial properties to merge.
+ * @param {string} [element] - HTML element for box/text nodes (defaults to 'div'/'p').
+ * @returns {PageNode} The newly created node.
+ */
 export function createNode(type, props = {}, element) {
   const id = generateId();
   const node = {
@@ -63,16 +92,33 @@ export function createNode(type, props = {}, element) {
   return node;
 }
 
+/**
+ * Generate the next unique node id (e.g. "node-1", "node-2", …).
+ *
+ * @returns {string} A new unique node id.
+ */
 export function generateId() {
   return `node-${nextId++}`;
 }
 
+/**
+ * Reset the internal id counter. Call after parsing an existing document
+ * to avoid collisions with pre-existing node ids.
+ *
+ * @param {number} [start=1] - Next id number to use.
+ */
 export function resetIdCounter(start = 1) {
   nextId = start;
 }
 
 // ================== DOCUMENT CREATION ==================
 
+/**
+ * Create an empty page document with a single root box node.
+ *
+ * @param {string} [title='New Page'] - Page title.
+ * @returns {{ version: number, title: string, meta: { description: string, og_image: string }, classes: string[], root: PageNode }} A new page document.
+ */
 export function createEmptyPage(title = 'New Page') {
   return {
     version: 1,
@@ -85,6 +131,13 @@ export function createEmptyPage(title = 'New Page') {
 
 // ================== TREE TRAVERSAL ==================
 
+/**
+ * Find a node by id anywhere in the tree (depth-first).
+ *
+ * @param {PageNode} root - Root of the tree to search.
+ * @param {string} id - Node id to find.
+ * @returns {PageNode|null} The matching node, or null if not found.
+ */
 export function findNode(root, id) {
   if (root.id === id) return root;
   if (root.children) {
@@ -96,6 +149,13 @@ export function findNode(root, id) {
   return null;
 }
 
+/**
+ * Find the parent of a node by its id.
+ *
+ * @param {PageNode} root - Root of the tree to search.
+ * @param {string} id - Id of the child node.
+ * @returns {PageNode|null} The parent node, or null if not found (or if id is the root).
+ */
 export function findParent(root, id) {
   if (root.children) {
     for (const child of root.children) {
@@ -107,7 +167,14 @@ export function findParent(root, id) {
   return null;
 }
 
-/** Is `id` found anywhere inside `subtree` (inclusive)? */
+/**
+ * Check whether a node id exists anywhere inside a subtree (inclusive).
+ * Used as a cycle guard before moving a node.
+ *
+ * @param {PageNode} subtree - Subtree root to check.
+ * @param {string} id - Node id to look for.
+ * @returns {boolean} True if the id is found within the subtree.
+ */
 export function isWithin(subtree, id) {
   if (subtree.id === id) return true;
   if (subtree.children) {
@@ -121,6 +188,14 @@ export function isWithin(subtree, id) {
 /**
  * Add a new child node to a parent at the given index.
  * Validates nesting rules before adding.
+ *
+ * @param {PageNode} root - Root of the page tree.
+ * @param {string} parentId - Id of the parent node to add to.
+ * @param {'box'|'text'|'image'} type - Type of the new child node.
+ * @param {number|null} [index] - Position within parent's children array. Appends if null/omitted.
+ * @param {Object<string, *>} [props={}] - Initial properties for the new node.
+ * @param {string} [element] - HTML element for box/text nodes.
+ * @returns {PageNode|null} The newly created node, or null if the operation is invalid.
  */
 export function addNode(root, parentId, type, index, props = {}, element) {
   const parent = findNode(root, parentId);
@@ -144,7 +219,12 @@ export function addNode(root, parentId, type, index, props = {}, element) {
 /**
  * Move a node to a new parent at the given index.
  * Enforces cycle guard and nesting validation.
- * Returns true when the tree changed.
+ *
+ * @param {PageNode} root - Root of the page tree.
+ * @param {string} nodeId - Id of the node to move.
+ * @param {string} targetParentId - Id of the new parent node.
+ * @param {number} index - Position within the target parent's children array.
+ * @returns {boolean} True when the tree was mutated, false if rejected.
  */
 export function moveNode(root, nodeId, targetParentId, index) {
   const node = findNode(root, nodeId);
@@ -177,8 +257,11 @@ export function moveNode(root, nodeId, targetParentId, index) {
 }
 
 /**
- * Remove a node from the tree. Returns true when removed.
- * The root node cannot be removed.
+ * Remove a node from the tree by id. The root node cannot be removed.
+ *
+ * @param {PageNode} root - Root of the page tree.
+ * @param {string} nodeId - Id of the node to remove.
+ * @returns {boolean} True when the node was removed, false otherwise.
  */
 export function removeNode(root, nodeId) {
   const parent = findParent(root, nodeId);
@@ -190,8 +273,10 @@ export function removeNode(root, nodeId) {
 }
 
 /**
- * Deep-clone a node with fresh IDs.
- * Returns the clone.
+ * Deep-clone a node with fresh IDs. Recursively clones all children.
+ *
+ * @param {PageNode} node - The node to clone.
+ * @returns {PageNode} A deep copy with a newly generated id.
  */
 export function cloneNode(node) {
   const clone = {
@@ -206,8 +291,11 @@ export function cloneNode(node) {
 }
 
 /**
- * Insert a clone of `nodeId` directly after it in the same parent.
- * Returns the new node or null.
+ * Insert a clone of a node directly after it in the same parent.
+ *
+ * @param {PageNode} root - Root of the page tree.
+ * @param {string} nodeId - Id of the node to duplicate.
+ * @returns {PageNode|null} The cloned node, or null if not found.
  */
 export function cloneNodeInPlace(root, nodeId) {
   const node = findNode(root, nodeId);
@@ -225,7 +313,9 @@ export function cloneNodeInPlace(root, nodeId) {
 
 /**
  * Validate a page document structure.
- * Returns { valid: boolean, errors: string[] }.
+ *
+ * @param {*} doc - The page document to validate.
+ * @returns {{ valid: boolean, errors: string[] }} Validation result with any error messages.
  */
 export function validatePage(doc) {
   const errors = [];
@@ -296,6 +386,9 @@ function validateNode(node, seenIds, errors) {
 /**
  * Parse a page JSON string into a page document.
  * Sets up the in-memory id counter from existing node ids.
+ *
+ * @param {string} text - JSON string representing a page document.
+ * @returns {Object} The parsed page document.
  */
 export function parsePage(text) {
   const doc = JSON.parse(text);
@@ -316,7 +409,10 @@ export function parsePage(text) {
 }
 
 /**
- * Serialize a page document to pretty JSON.
+ * Serialize a page document to pretty-printed JSON.
+ *
+ * @param {Object} doc - The page document to serialize.
+ * @returns {string} JSON string with 2-space indentation and trailing newline.
  */
 export function serializePage(doc) {
   return JSON.stringify(doc, null, 2) + '\n';

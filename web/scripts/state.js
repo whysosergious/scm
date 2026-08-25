@@ -3,8 +3,26 @@
 
 import { api } from './api.js';
 
+/** @type {string} localStorage key used to persist the selected project id. */
 const STORAGE_KEY = 'scm:selected-project-id';
 
+/**
+ * Global reactive state object. Mutations go through {@link patch} so
+ * subscribers are notified automatically.
+ *
+ * @type {{
+ *   ready: boolean,
+ *   projects: Array<Object>,
+ *   projectsDir: string,
+ *   selectedId: string|null,
+ *   selectedFile: string|null,
+ *   files: Array<string>,
+ *   pages: Array<string>,
+ *   selectedPage: string|null,
+ *   gitStatus: Object|null,
+ *   view: 'content'|'settings'|'media'|'page-editor'
+ * }}
+ */
 export const state = {
   ready: false,
   projects: [],
@@ -18,26 +36,51 @@ export const state = {
   view: 'content', // 'content' | 'settings' | 'media' | 'page-editor'
 };
 
+/** @type {Set<function(Object): void>} Active state-change subscribers. */
 const listeners = new Set();
 
+/**
+ * Registers a subscriber that is called after every {@link patch}.
+ * @param {function(Object): void} fn - Callback receiving the current state.
+ * @returns {function(): void} Unsubscribe function (removes the listener).
+ */
 export function subscribe(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
 
+/**
+ * Notifies all registered subscribers of the current state.
+ * Called internally by {@link patch}.
+ * @returns {void}
+ */
 export function notify() {
   for (const fn of listeners) fn(state);
 }
 
+/**
+ * Merges `partial` into the global state and notifies subscribers.
+ * @param {Object<string, *>} partial - Partial state fields to merge.
+ * @returns {void}
+ */
 export function patch(partial) {
   Object.assign(state, partial);
   notify();
 }
 
+/**
+ * Returns the currently selected project object, or `null` if none matches.
+ * @returns {Object|null} The project with `id === state.selectedId`.
+ */
 export function selectedProject() {
   return state.projects.find((p) => p.id === state.selectedId) || null;
 }
 
+/**
+ * Fetches the project list from the server and updates state.
+ * Also runs {@link applySelectionRules} to keep the selection valid.
+ * @returns {Promise<Object>} Raw server response (`{ projects, projects_dir }`).
+ */
 export async function refreshProjects() {
   const data = await api.listProjects();
   patch({ projects: data.projects, projectsDir: data.projects_dir });
@@ -45,7 +88,12 @@ export async function refreshProjects() {
   return data;
 }
 
-/** Selection rules exactly per spec §7. */
+/**
+ * Selection rules exactly per spec §7.
+ * If the selected id no longer exists, falls back to the first project.
+ * If no projects remain, clears the selection.
+ * @returns {void}
+ */
 export function applySelectionRules() {
   if (state.projects.length === 0) {
     if (state.selectedId !== null) patch({ selectedId: null, selectedFile: null });
@@ -59,6 +107,12 @@ export function applySelectionRules() {
   }
 }
 
+/**
+ * Sets the active project by id, persists it to localStorage, resets
+ * file/page/git state, and triggers a refresh of all project data.
+ * @param {string} id - The project id to select.
+ * @returns {void}
+ */
 export function setSelection(id) {
   localStorage.setItem(STORAGE_KEY, id);
   patch({
@@ -73,6 +127,11 @@ export function setSelection(id) {
   refreshGitStatus().catch(() => {});
 }
 
+/**
+ * Reloads the content file list for the selected project.
+ * On error (e.g. missing content dir) patches an empty list silently.
+ * @returns {Promise<void>}
+ */
 export async function refreshFiles() {
   const project = selectedProject();
   if (!project || !state.projects.find((p) => p.id === project.id)) return;
@@ -86,6 +145,11 @@ export async function refreshFiles() {
   }
 }
 
+/**
+ * Reloads the pages list for the selected project.
+ * On error (e.g. missing pages dir) patches an empty list silently.
+ * @returns {Promise<void>}
+ */
 export async function refreshPages() {
   const project = selectedProject();
   if (!project || !state.projects.find((p) => p.id === project.id)) return;
@@ -98,10 +162,20 @@ export async function refreshPages() {
   }
 }
 
+/**
+ * Selects a page for editing in the page-editor view.
+ * @param {string} name - Page name to open.
+ * @returns {void}
+ */
 export function setPageSelection(name) {
   patch({ selectedPage: name, view: 'page-editor', selectedFile: null });
 }
 
+/**
+ * Reloads the git status for the selected project.
+ * If no project is selected or the request fails, patches `gitStatus` to `null`.
+ * @returns {Promise<void>}
+ */
 export async function refreshGitStatus() {
   const project = selectedProject();
   if (!project) {

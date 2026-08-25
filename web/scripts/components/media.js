@@ -6,7 +6,10 @@ import { el, icon } from '../dom.js';
 import { selectedProject } from '../state.js';
 import { toast, toastError } from './toast.js';
 
+/** @type {string} localStorage key for the current media view mode. */
 const VIEW_KEY = 'scm:media-view';
+
+/** @type {Array<[string, string, string]>} Available view modes as [mode-id, material-icon-name, tooltip]. */
 const MODES = [
   ['grid-sm', 'calendar_view_month', 'Small grid'],
   ['grid-lg', 'grid_view', 'Large grid'],
@@ -14,19 +17,35 @@ const MODES = [
   ['list-sm', 'view_agenda', 'List (small previews)'],
 ];
 
+/** @type {string} Active media view mode identifier. */
 let viewMode = localStorage.getItem(VIEW_KEY) || 'grid-sm';
 
+/**
+ * Persist the selected media view mode.
+ * @param {string} mode - One of the MODES identifiers.
+ * @returns {void}
+ */
 function setViewMode(mode) {
   viewMode = mode;
   localStorage.setItem(VIEW_KEY, mode);
 }
 
+/**
+ * Format a byte count into a human-readable string.
+ * @param {number} bytes - File size in bytes.
+ * @returns {string} Human-readable size (e.g. "1.2 MB").
+ */
 function fmtSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Render the full media management view into the given container.
+ * @param {HTMLElement} root - Container element to render into (will be cleared).
+ * @returns {void}
+ */
 export function renderMedia(root) {
   root.textContent = '';
   const project = selectedProject();
@@ -129,6 +148,15 @@ export function renderMedia(root) {
     });
 }
 
+/**
+ * Build a single media-item DOM node with thumbnail, metadata, and action buttons.
+ * @param {Object} project - The currently selected project.
+ * @param {Object} file - A media file descriptor from the API.
+ * @param {Array<Object>} files - The full list of media files.
+ * @param {number} index - Index of this file in the files array.
+ * @param {HTMLElement} root - Root container for re-renders after mutations.
+ * @returns {HTMLElement} The constructed media-item element.
+ */
 function mediaItem(project, file, files, index, root) {
   const serveUrl = api.serveMediaUrl(project.id, file.name);
 
@@ -174,10 +202,24 @@ function mediaItem(project, file, files, index, root) {
   return item;
 }
 
+/**
+ * Create an icon button for a media action (copy/rename/delete).
+ * @param {string} iconName - Material icon name.
+ * @param {string} title - Tooltip text for the button.
+ * @param {function(): void} onclick - Click handler.
+ * @returns {HTMLElement} The button element.
+ */
 function actionBtn(iconName, title, onclick) {
   return el('button', { class: 'btn-icon media-act', title, onclick }, icon(iconName, 16));
 }
 
+/**
+ * Prompt for a new filename and perform the rename via the API.
+ * @param {Object} project - The currently selected project.
+ * @param {Object} file - The media file descriptor to rename.
+ * @param {HTMLElement} root - Root container for re-renders.
+ * @returns {Promise<void>}
+ */
 async function renameFlow(project, file, root) {
   const newName = prompt(`Rename ${file.name} to:`, file.name);
   if (newName === null || newName === file.name) return;
@@ -192,6 +234,14 @@ async function renameFlow(project, file, root) {
 
 // ------------------------------------------------------------- lightbox
 
+/**
+ * Open the lightbox viewer for a media file.
+ * @param {Object} project - The currently selected project.
+ * @param {Array<Object>} files - The full list of media files.
+ * @param {number} index - Index of the file to display initially.
+ * @param {HTMLElement} root - Root container for re-renders on delete.
+ * @returns {void}
+ */
 function openViewer(project, files, index, root) {
   let current = index;
   let dirty = false;

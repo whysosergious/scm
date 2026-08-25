@@ -7,6 +7,12 @@ import { el } from '../dom.js';
 import { patch, refreshProjects, state } from '../state.js';
 import { toast, toastError } from './toast.js';
 
+/**
+ * Renders the SCM configuration editor (spec §10). Loads scm-config.json
+ * as pretty-printed JSON in a textarea, with client-side validation and
+ * atomic save via the API.
+ * @param {HTMLElement} root - DOM element to render into
+ */
 export function renderConfigEditor(root) {
   root.textContent = '';
 

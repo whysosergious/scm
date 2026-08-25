@@ -12,6 +12,12 @@ import { renderInspector } from './page-inspector.js';
 import { renderBoxModel, clearBoxModel } from './page-boxmodel.js';
 import { toast, toastError } from './toast.js';
 
+/**
+ * Top-level entry point for the page editor. Shows the appropriate view
+ * (no project, no checkout, no page selected, or the full editor).
+ * @param {HTMLElement} root - Container element to render into.
+ * @returns {void}
+ */
 export function renderPageEditor(root) {
   root.textContent = '';
   const project = selectedProject();
@@ -34,6 +40,11 @@ export function renderPageEditor(root) {
   renderEditor(root, project);
 }
 
+/**
+ * Renders the "no project configured" empty state with an import button.
+ * @param {HTMLElement} root - Container element.
+ * @returns {void}
+ */
 function renderNoProject(root) {
   const btn = el('button', { class: 'btn-primary' }, 'Import a project');
   btn.addEventListener('click', async () => {
@@ -49,6 +60,12 @@ function renderNoProject(root) {
   );
 }
 
+/**
+ * Renders the "checkout not found" empty state with a clone button.
+ * @param {HTMLElement} root - Container element.
+ * @param {Object} project - Project configuration object.
+ * @returns {void}
+ */
 function renderNeedsCheckout(root, project) {
   const btn = el('button', { class: 'btn-primary' }, 'Clone now');
   btn.addEventListener('click', async () => {
@@ -72,6 +89,12 @@ function renderNeedsCheckout(root, project) {
   );
 }
 
+/**
+ * Renders the "no page selected" empty state with a create-index button.
+ * @param {HTMLElement} root - Container element.
+ * @param {Object} project - Project configuration object.
+ * @returns {void}
+ */
 function renderNoPage(root, project) {
   const btn = el('button', { class: 'btn-primary' }, 'Create index.json');
   btn.addEventListener('click', async () => {
@@ -94,6 +117,13 @@ function renderNoPage(root, project) {
   );
 }
 
+/**
+ * Renders the full page editor: toolbar, three-column layout (palette|canvas|inspector),
+ * manages load/save flow and dirty state.
+ * @param {HTMLElement} root - Container element.
+ * @param {Object} project - Project configuration object.
+ * @returns {void}
+ */
 function renderEditor(root, project) {
   const name = state.selectedPage;
   let originalText = '';
@@ -137,6 +167,11 @@ function renderEditor(root, project) {
   setupCanvasDragDrop(canvasEl, () => doc, selectNode, onAddNode);
 
   // State
+  /**
+   * Marks the document as dirty or clean and updates the save button and indicator.
+   * @param {boolean} v - Whether the document has unsaved changes.
+   * @returns {void}
+   */
   function markDirty(v) {
     dirty = v;
     saveBtn.disabled = !v;
@@ -144,6 +179,10 @@ function renderEditor(root, project) {
     dirtyIndicator.textContent = v ? '(unsaved changes)' : '';
   }
 
+  /**
+   * Clears and re-renders the box model control for the current selection.
+   * @returns {void}
+   */
   function renderBoxModelNow() {
     clearBoxModel(canvasEl);
     if (selectedNodeId) {
@@ -152,6 +191,11 @@ function renderEditor(root, project) {
     }
   }
 
+  /**
+   * Selects a node by ID: updates the inspector, canvas selection highlight, and box model.
+   * @param {string} id - The node ID to select.
+   * @returns {void}
+   */
   function selectNode(id) {
     selectedNodeId = id;
     renderInspector(inspectorEl, doc, id, onNodeChange);
@@ -171,6 +215,10 @@ function renderEditor(root, project) {
     }
   }
 
+  /**
+   * Handles any node property change: marks dirty, re-renders canvas and box model.
+   * @returns {void}
+   */
   function onNodeChange() {
     markDirty(true);
     renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
@@ -182,6 +230,13 @@ function renderEditor(root, project) {
     }
   }
 
+  /**
+   * Handles node drop (reorder/move): moves the node in the tree and re-renders.
+   * @param {string} nodeId - ID of the node being moved.
+   * @param {string} targetParentId - ID of the target parent node.
+   * @param {number} index - Insertion index in the target parent's children.
+   * @returns {void}
+   */
   function onDrop(nodeId, targetParentId, index) {
     const changed = pm.moveNode(doc.root, nodeId, targetParentId, index);
     if (changed) {
@@ -197,6 +252,13 @@ function renderEditor(root, project) {
     }
   }
 
+  /**
+   * Handles adding a new node: inserts into the tree, marks dirty, selects the new node.
+   * @param {string} parentId - ID of the parent node to add to.
+   * @param {number} index - Insertion index in the parent's children.
+   * @param {string} type - Component type ('box'|'text'|'image').
+   * @returns {void}
+   */
   function onAddNode(parentId, index, type) {
     const node = pm.addNode(doc.root, parentId, type, index);
     if (node) {
@@ -254,6 +316,10 @@ function renderEditor(root, project) {
 
   // Load page
   loadPage();
+  /**
+   * Loads the page content from the API, parses it, validates, and renders.
+   * @returns {Promise<void>}
+   */
   async function loadPage() {
     try {
       const data = await api.loadPage(project.id, name);

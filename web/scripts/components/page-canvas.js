@@ -7,10 +7,26 @@
 import * as pm from '../page-model.js';
 import { el } from '../dom.js';
 
+/** @type {string} Current project ID used for resolving image sources. */
 let _projectId = '';
 
+/**
+ * Sets the project ID used for resolving relative image paths.
+ * @param {string} id - The project ID.
+ * @returns {void}
+ */
 export function setProjectId(id) { _projectId = id; }
 
+/**
+ * Renders the visual canvas from the page document tree.
+ * @param {HTMLElement} root - Container element to render the canvas into.
+ * @param {Object|null} doc - Page document with a root node tree, or null if no page loaded.
+ * @param {string|null} selectedNodeId - ID of the currently selected node, or null.
+ * @param {function(string): void} onSelect - Callback when a node is selected.
+ * @param {function(string, string, number): void} onDrop - Callback when a node is dropped (nodeId, targetParentId, index).
+ * @param {function(string, number, string): void} onAddNode - Callback to add a new node (parentId, index, type).
+ * @returns {void}
+ */
 export function renderCanvas(root, doc, selectedNodeId, onSelect, onDrop, onAddNode) {
   root.textContent = '';
 
@@ -26,7 +42,15 @@ export function renderCanvas(root, doc, selectedNodeId, onSelect, onDrop, onAddN
   root.append(pageLayer);
 }
 
-/** Call once per editor mount to set up root-level listeners. */
+/**
+ * Sets up root-level drag/drop, hover tracking, and Alt+click element picker listeners.
+ * Call once per editor mount.
+ * @param {HTMLElement} root - The canvas container element.
+ * @param {function(): Object|null} getDoc - Returns the current page document (or null).
+ * @param {function(string): void} onSelect - Callback when a node is selected.
+ * @param {function(string, number, string): void} onAddNode - Callback to add a new node (parentId, index, type).
+ * @returns {void}
+ */
 export function setupCanvasDragDrop(root, getDoc, onSelect, onAddNode) {
   // Hover tracking: only one label at a time
   root.addEventListener('mouseover', (e) => {
@@ -120,6 +144,16 @@ export function setupCanvasDragDrop(root, getDoc, onSelect, onAddNode) {
 
 // ================== NODE RENDERING ==================
 
+/**
+ * Dispatches rendering of a page node to the appropriate renderer by type.
+ * @param {HTMLElement} parent - Parent DOM element to append to.
+ * @param {Object} node - Page node tree object.
+ * @param {string|null} selectedId - ID of the currently selected node.
+ * @param {function(string): void} onSelect - Node selection callback.
+ * @param {function(string, string, number): void} onDrop - Node drop callback.
+ * @param {function(string, number, string): void} onAddNode - Add-node callback.
+ * @returns {void}
+ */
 function renderNode(parent, node, selectedId, onSelect, onDrop, onAddNode) {
   if (node.type === 'box') {
     renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode);
@@ -130,6 +164,16 @@ function renderNode(parent, node, selectedId, onSelect, onDrop, onAddNode) {
   }
 }
 
+/**
+ * Renders a box node as a container element with recursive children.
+ * @param {HTMLElement} parent - Parent DOM element.
+ * @param {Object} node - Box node with props.element, children, styles, classes.
+ * @param {string|null} selectedId - ID of the currently selected node.
+ * @param {function(string): void} onSelect - Node selection callback.
+ * @param {function(string, string, number): void} onDrop - Node drop callback.
+ * @param {function(string, number, string): void} onAddNode - Add-node callback.
+ * @returns {void}
+ */
 function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
   const element = (node.props && node.props.element) || 'div';
   const tag = document.createElement(element);
@@ -153,6 +197,14 @@ function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
   parent.append(tag);
 }
 
+/**
+ * Renders a text node as a text element (p, h1, h2, span, etc.).
+ * @param {HTMLElement} parent - Parent DOM element.
+ * @param {Object} node - Text node with props.element, props.value, styles, classes.
+ * @param {string|null} selectedId - ID of the currently selected node.
+ * @param {function(string): void} onSelect - Node selection callback.
+ * @returns {void}
+ */
 function renderText(parent, node, selectedId, onSelect) {
   const element = (node.props && node.props.element) || 'p';
   const tag = document.createElement(element);
@@ -169,6 +221,14 @@ function renderText(parent, node, selectedId, onSelect) {
   parent.append(tag);
 }
 
+/**
+ * Renders an image node as a wrapper div containing an img element.
+ * @param {HTMLElement} parent - Parent DOM element.
+ * @param {Object} node - Image node with props.src, props.alt, styles, classes.
+ * @param {string|null} selectedId - ID of the currently selected node.
+ * @param {function(string): void} onSelect - Node selection callback.
+ * @returns {void}
+ */
 function renderImage(parent, node, selectedId, onSelect) {
   // Wrap img in a div because ::after doesn't work on replaced elements
   const wrapper = document.createElement('div');
@@ -191,6 +251,13 @@ function renderImage(parent, node, selectedId, onSelect) {
   parent.append(wrapper);
 }
 
+/**
+ * Adds click-to-select and dragstart/dragend event handlers to a canvas node element.
+ * @param {HTMLElement} tag - The DOM element to attach interactions to.
+ * @param {string} nodeId - The page node ID.
+ * @param {function(string): void} onSelect - Node selection callback.
+ * @returns {void}
+ */
 function addInteraction(tag, nodeId, onSelect) {
   tag.addEventListener('click', (e) => {
     if (e.altKey) return; // handled by element picker
@@ -210,6 +277,11 @@ function addInteraction(tag, nodeId, onSelect) {
   });
 }
 
+/**
+ * Resolves an image source path relative to the current project's files endpoint.
+ * @param {string} src - Image source path (may be relative, absolute, or data URI).
+ * @returns {string} Resolved absolute URL or empty string if no source.
+ */
 function resolveImgSrc(src) {
   if (!src) return '';
   // Already absolute or data URI
@@ -218,6 +290,12 @@ function resolveImgSrc(src) {
   return `/files/${_projectId}/${src}`;
 }
 
+/**
+ * Applies inline CSS styles from a node's styles object to a DOM element.
+ * @param {HTMLElement} tag - Target DOM element.
+ * @param {Object} node - Page node with optional styles property.
+ * @returns {void}
+ */
 function applyStyles(tag, node) {
   if (!node.styles) return;
   for (const [k, v] of Object.entries(node.styles)) {
@@ -225,6 +303,12 @@ function applyStyles(tag, node) {
   }
 }
 
+/**
+ * Applies CSS classes from a node's classes array to a DOM element.
+ * @param {HTMLElement} tag - Target DOM element.
+ * @param {Object} node - Page node with optional classes property.
+ * @returns {void}
+ */
 function applyClasses(tag, node) {
   if (node.classes && node.classes.length > 0) {
     tag.classList.add(...node.classes);
@@ -233,6 +317,14 @@ function applyClasses(tag, node) {
 
 // ================== ELEMENT PICKER (Alt+click) ==================
 
+/**
+ * Shows an element picker dropdown listing all nodes under the cursor.
+ * @param {HTMLElement} canvasRoot - The canvas container element.
+ * @param {MouseEvent} mouseEvent - The Alt+click event.
+ * @param {function(): Object|null} getDoc - Returns the current page document.
+ * @param {function(string): void} onSelect - Callback when a node is selected from the picker.
+ * @returns {void}
+ */
 function showElementPicker(canvasRoot, mouseEvent, getDoc, onSelect) {
   closeElementPicker(canvasRoot);
 
@@ -308,6 +400,11 @@ function showElementPicker(canvasRoot, mouseEvent, getDoc, onSelect) {
   setTimeout(() => document.addEventListener('click', close, true), 0);
 }
 
+/**
+ * Closes the element picker dropdown and removes hover highlights.
+ * @param {HTMLElement} canvasRoot - The canvas container element.
+ * @returns {void}
+ */
 function closeElementPicker(canvasRoot) {
   canvasRoot.querySelectorAll('.canvas-element-picker').forEach((p) => p.remove());
   canvasRoot.querySelectorAll('.canvas-picker-highlight').forEach((n) => n.classList.remove('canvas-picker-highlight'));
@@ -315,6 +412,12 @@ function closeElementPicker(canvasRoot) {
 
 // ================== DROP TARGET DETECTION ==================
 
+/**
+ * Finds the drop target element and position (before/after/inside) at the drag cursor.
+ * @param {HTMLElement} canvasRoot - The canvas container element.
+ * @param {DragEvent} dragEvent - The dragover or drop event.
+ * @returns {{element: HTMLElement, position: string}|null} Target element and drop position, or null.
+ */
 function findDropTarget(canvasRoot, dragEvent) {
   const pageLayer = canvasRoot.querySelector('.canvas-page-layer');
   if (!pageLayer) return null;
@@ -347,6 +450,12 @@ function findDropTarget(canvasRoot, dragEvent) {
   return null;
 }
 
+/**
+ * Highlights the current drop target element with appropriate CSS classes.
+ * @param {HTMLElement} canvasRoot - The canvas container element.
+ * @param {DragEvent} dragEvent - The drag event.
+ * @returns {void}
+ */
 function highlightDropTarget(canvasRoot, dragEvent) {
   clearDropHighlights(canvasRoot);
   const target = findDropTarget(canvasRoot, dragEvent);
@@ -354,6 +463,11 @@ function highlightDropTarget(canvasRoot, dragEvent) {
   target.element.classList.add('drop-target', `drop-${target.position}`);
 }
 
+/**
+ * Removes all drop-target highlight classes from the canvas.
+ * @param {HTMLElement} canvasRoot - The canvas container element.
+ * @returns {void}
+ */
 function clearDropHighlights(canvasRoot) {
   canvasRoot.querySelectorAll('.drop-target').forEach((el) => {
     el.classList.remove('drop-target', 'drop-before', 'drop-after', 'drop-inside');

@@ -5,6 +5,11 @@ import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
 import { selectedProject } from '../state.js';
 
+/**
+ * Resolves an image source path relative to the selected project's files endpoint.
+ * @param {string} src - Image source path (may be relative, absolute, or data URI).
+ * @returns {string} Resolved absolute URL or the original source.
+ */
 function resolveImgSrc(src) {
   if (!src) return '';
   if (src.startsWith('/') || src.startsWith('http') || src.startsWith('data:')) return src;
@@ -12,6 +17,16 @@ function resolveImgSrc(src) {
   return project ? `/files/${project.id}/${src}` : src;
 }
 
+/**
+ * @typedef {Object} CssPropDef
+ * @property {string} key - CSS property name.
+ * @property {string} label - Display label.
+ * @property {'text'|'select'} type - Input type.
+ * @property {string} [placeholder] - Placeholder text for text inputs.
+ * @property {string[]} [options] - Select options for select inputs.
+ */
+
+/** @type {CssPropDef[]} List of editable CSS properties for the inspector. */
 const CSS_PROPS = [
   { key: 'display', label: 'display', type: 'select', options: ['block', 'flex', 'grid', 'none', 'inline', 'inline-block', 'inline-flex'] },
   { key: 'position', label: 'position', type: 'select', options: ['static', 'relative', 'absolute', 'fixed', 'sticky'] },
@@ -75,9 +90,17 @@ const CSS_PROPS = [
   { key: 'transition', label: 'transition', type: 'text', placeholder: 'none' },
 ];
 
-// Map key → full prop definition for quick lookup
+/** @type {Object<string, CssPropDef>} Map of CSS property key to its definition for quick lookup. */
 const CSS_PROP_MAP = Object.fromEntries(CSS_PROPS.map((p) => [p.key, p]));
 
+/**
+ * Renders the inspector panel showing selected node properties, CSS styles, and class assignment.
+ * @param {HTMLElement} root - Container element to render the inspector into.
+ * @param {Object|null} doc - Page document with root node tree and classes array.
+ * @param {string|null} selectedNodeId - ID of the currently selected node, or null.
+ * @param {function(): void} onChange - Callback invoked when any property is modified.
+ * @returns {void}
+ */
 export function renderInspector(root, doc, selectedNodeId, onChange) {
   root.textContent = '';
 
@@ -317,6 +340,15 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
   }
 }
 
+/**
+ * Shows a CSS property picker dropdown with search filtering and keyboard navigation.
+ * @param {HTMLElement} container - The styles container element.
+ * @param {HTMLElement} addBtn - The "Add style" button to position the picker near.
+ * @param {Object} node - The page node being edited.
+ * @param {function(): void} onChange - Callback invoked when a property is added.
+ * @param {function(): void} renderStyles - Callback to re-render the styles list.
+ * @returns {void}
+ */
 function showPropertyPicker(container, addBtn, node, onChange, renderStyles) {
   container.querySelector('.css-property-picker')?.remove();
 

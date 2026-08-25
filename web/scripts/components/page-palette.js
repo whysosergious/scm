@@ -3,12 +3,27 @@
 
 import { el, icon } from '../dom.js';
 
+/**
+ * @typedef {Object} ComponentDef
+ * @property {string} type - Component type identifier ('box'|'text'|'image')
+ * @property {string} label - Display label
+ * @property {string} icon - Material icon name
+ * @property {string} desc - Tooltip description
+ */
+
+/** @type {ComponentDef[]} Available component definitions. */
 const COMPONENTS = [
   { type: 'box', label: 'Box', icon: 'check_box_outline_blank', desc: 'Container for grouping children' },
   { type: 'text', label: 'Text', icon: 'text_fields', desc: 'Text content (p, h1, h2, span…)' },
   { type: 'image', label: 'Image', icon: 'image', desc: 'Image from media directory' },
 ];
 
+/**
+ * Renders the component palette with draggable items and click-to-add support.
+ * @param {HTMLElement} root - Container element to render the palette into.
+ * @param {function(string): void} onAdd - Callback invoked with component type when a component is added.
+ * @returns {void}
+ */
 export function renderPalette(root, onAdd) {
   root.textContent = '';
 

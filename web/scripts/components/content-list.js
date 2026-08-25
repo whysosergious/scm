@@ -8,8 +8,14 @@ import { el, icon } from '../dom.js';
 import { patch, selectedProject, state } from '../state.js';
 import { toast, toastError } from './toast.js';
 
+/** @type {boolean} Whether the Content category is expanded in the sidebar. */
 let categoryOpen = true;
 
+/**
+ * Render the collapsible Content navigation category into the given container.
+ * Includes a header toggle, the file list, and a fly-out for collapsed sidebar mode.
+ * @param {HTMLElement} container - The sidebar element to render into.
+ */
 export function renderContentNav(container) {
   container.textContent = '';
   const project = selectedProject();
@@ -41,6 +47,12 @@ export function renderContentNav(container) {
   container.append(category);
 }
 
+/**
+ * Build the list of content files for a project, with an "Add" button at the bottom.
+ * @param {Object|null} project - The currently selected project, or null if none.
+ * @param {boolean} inFlyout - Whether this list is rendered inside a collapsed-sidebar fly-out.
+ * @returns {HTMLElement} A div containing the file list items.
+ */
 function buildFileList(project, inFlyout) {
   const list = el('div', { class: 'nav-file-list' });
 
@@ -91,7 +103,10 @@ function buildFileList(project, inFlyout) {
   return list;
 }
 
-/** Add-file flow: prompt for a name, create, offer content-dir creation. */
+/**
+ * Add-file flow: prompt for a name, create via API, offer content-dir creation if missing.
+ * @returns {Promise<void>}
+ */
 export async function triggerAddFile() {
   const project = selectedProject();
   if (!project) {
@@ -125,6 +140,10 @@ export async function triggerAddFile() {
   }
 }
 
+/**
+ * Reload the file list from the server (silent, errors swallowed).
+ * @returns {Promise<void>}
+ */
 export async function refreshFileList() {
   const { refreshFiles } = await import('../state.js');
   await refreshFiles().catch(() => {});

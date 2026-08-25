@@ -10,6 +10,11 @@ import { createFormEditor } from './form-editor.js';
 import { triggerAddFile } from './content-list.js';
 import { toast, toastError } from './toast.js';
 
+/**
+ * Renders the file editor into the given root element. Displays one of:
+ * clone prompt, file list/empty state, or the tabbed Form|JSON editor.
+ * @param {HTMLElement} root - DOM element to render into (caller owns clearing it)
+ */
 export function renderEditor(root) {
   // NOTE: caller owns clearing `root`; this function renders into it.
   const project = selectedProject();

@@ -7,6 +7,10 @@ import { refreshGitStatus, refreshProjects, selectedProject, state } from '../st
 import { renderStatusPanel } from './git-status.js';
 import { toast, toastError } from './toast.js';
 
+/**
+ * Mapping from publish outcome codes to [toast-kind, icon-name, label] triples.
+ * @type {Object<string, [string, string, string]>}
+ */
 const OUTCOME_STYLE = {
   committed_and_pushed: ['ok', 'check_circle', 'Published'],
   no_changes: ['ok', 'info', 'Nothing to publish'],
@@ -19,8 +23,14 @@ const OUTCOME_STYLE = {
   invalid_repo: ['error', 'folder_off', 'Invalid repository'],
 };
 
+/** @type {string} localStorage key for the collapsed/expanded state of the status bar. */
 const COLLAPSE_KEY = 'scm:status-collapsed';
 
+/**
+ * Render the project info status bar. Shows checkout status, git status sub-panel,
+ * and the publish button. Hidden when no project is selected or in settings view.
+ * @returns {void}
+ */
 export function renderProjectInfo() {
   const bar = document.getElementById('status-bar');
   if (!bar) return;
@@ -93,6 +103,12 @@ export function renderProjectInfo() {
   }
 }
 
+/**
+ * Initiate the publish flow: prompt for a commit message, call the publish API,
+ * and refresh state on success.
+ * @param {HTMLButtonElement} btn - The publish button to disable during the operation.
+ * @returns {Promise<void>}
+ */
 async function doPublish(btn) {
   const project = selectedProject();
   if (!project || !state.gitStatus) return;

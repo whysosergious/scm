@@ -7,8 +7,13 @@ import { patch, refreshFiles, refreshGitStatus, refreshProjects, selectedProject
 import { openImportModal } from './import-modal.js';
 import { toast, toastError } from './toast.js';
 
+/** @type {HTMLElement|null} The currently open dropdown element. */
 let dropdown = null;
 
+/**
+ * Close and remove the dropdown menu if open.
+ * @returns {void}
+ */
 function closeDropdown() {
   if (dropdown) {
     dropdown.remove();
@@ -17,10 +22,20 @@ function closeDropdown() {
   }
 }
 
+/**
+ * Handle clicks outside the dropdown to close it.
+ * @param {MouseEvent} e - The document click event.
+ * @returns {void}
+ */
 function onOutside(e) {
   if (dropdown && !dropdown.contains(e.target)) closeDropdown();
 }
 
+/**
+ * Select a project by id, trigger lazy clone if needed, and refresh related state.
+ * @param {string} id - The project id to select.
+ * @returns {Promise<void>}
+ */
 async function selectAndPrepare(id) {
   closeDropdown();
   const project = state.projects.find((p) => p.id === id);
@@ -46,12 +61,21 @@ async function selectAndPrepare(id) {
   refreshGitStatus().catch(() => {});
 }
 
+/**
+ * Refresh all project-related data (projects list, files, git status).
+ * @returns {Promise<void>}
+ */
 async function refreshEverything() {
   await refreshProjects().catch(toastError);
   refreshFiles().catch(() => {});
   refreshGitStatus().catch(() => {});
 }
 
+/**
+ * Render the project selector (header dropdown trigger) into the given container.
+ * @param {HTMLElement} container - The container element to render into.
+ * @returns {void}
+ */
 export function renderProjectSelector(container) {
   container.textContent = '';
   const project = selectedProject();

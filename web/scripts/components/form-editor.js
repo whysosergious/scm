@@ -6,6 +6,7 @@ import { el, icon } from '../dom.js';
 import { selectedProject } from '../state.js';
 import { enableDrag } from './dnd.js';
 
+/** @type {Object<string, string>} Human-readable labels for each JSON value type. */
 const TYPE_LABELS = {
   string: 'String',
   number: 'Number',
@@ -15,23 +16,34 @@ const TYPE_LABELS = {
   null: 'Null',
 };
 
-// HTML-ish values carry markup tags; markdown-ish values carry markdown
-// markers (headings, lists, emphasis, code, links, fences). Deliberately
-// NO single-underscore emphasis: it false-positives on URLs and
-// snake_case identifiers.
+/**
+ * HTML-ish values carry markup tags; markdown-ish values carry markdown
+ * markers (headings, lists, emphasis, code, links, fences). Deliberately
+ * NO single-underscore emphasis: it false-positives on URLs and
+ * snake_case identifiers.
+ * @type {RegExp}
+ */
 const HTMLISH_RE = /<[a-z!][\s\S]*>/i;
+/** @type {RegExp} Matches common markdown syntax patterns. */
 const MARKDOWNISH_RE = /(^|\n)[ ]{0,3}(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s)|\*\*[^*\n]+\*\*|`[^`\n]+`|\[[^\]\n]+\]\([^)\n]+\)|(^|\n)```/;
 
 /** Length beyond which plain text autodetects as a multi-line field. */
 const TEXTAREA_LENGTH_THRESHOLD = 100;
 
+/**
+ * Determine the rich-text format for a string value.
+ * @param {string|null|undefined} value - The string value to inspect.
+ * @returns {'html'|'markdown'} The detected format.
+ */
 function richFormatFor(value) {
   return HTMLISH_RE.test(value ?? '') ? 'html' : 'markdown';
 }
 
 /**
  * Pure autodetect heuristic (exported for tests): rich for HTML/markdown,
- * text field for long or multi-line plain text, input for the rest.
+ * textarea for long or multi-line plain text, input for the rest.
+ * @param {string|null|undefined} value - The string value to classify.
+ * @returns {'rich'|'textarea'|'input'} The detected editing mode.
  */
 export function autodetectStringMode(value) {
   const v = String(value ?? '');
@@ -40,6 +52,15 @@ export function autodetectStringMode(value) {
   return 'input';
 }
 
+/**
+ * Create a recursive form editor bound to a root DOM element.
+ * Returns an API object with render, expand, tree, and onDirty.
+ * @param {HTMLElement} rootEl - The container element to render into.
+ * @param {Object} options - Configuration options.
+ * @param {Object} options.tree - The json-model root node to edit.
+ * @param {function(): void} [options.onDirty] - Callback invoked when any value changes.
+ * @returns {{ tree: Object, collapsed: Set<number>, render: function(): void, expand: function(number): boolean, onDirty: function(): void, focusNewId: number|null }}
+ */
 export function createFormEditor(rootEl, { tree, onDirty }) {
   const api = {
     tree,
@@ -90,6 +111,12 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     }
   }
 
+  /**
+   * Append rendered child rows to a container element.
+   * @param {HTMLElement} list - The container to append rows into.
+   * @param {Object} parent - The parent container node (object or array).
+   * @param {number} depth - Nesting depth for indentation.
+   */
   function appendChildren(list, parent, depth) {
     parent.children.forEach((child, index) => {
       list.append(renderRow(child, parent, index, depth));
@@ -98,6 +125,15 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
 
   // ================== ROW ==================
 
+  /**
+   * Render a single property/entry row with drag handle, name/index, type
+   * button, clone/delete actions, and value editor.
+   * @param {Object} node - The json-model node to render.
+   * @param {Object} parent - The parent container node.
+   * @param {number} index - The child index within the parent.
+   * @param {number} depth - Nesting depth for indentation.
+   * @returns {HTMLElement} The rendered row element.
+   */
   function renderRow(node, parent, index, depth) {
     const row = el('div', {
       class: `field-item prop-row ${api.collapsed.has(node.id) ? 'collapsed' : ''}`,
@@ -196,6 +232,13 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     return row;
   }
 
+  /**
+   * Create an editable text input for a property key (object) name.
+   * On blur, attempts rename via model.renameKey; highlights invalid names inline.
+   * @param {Object} node - The json-model node whose key is being edited.
+   * @param {Object} parent - The parent container node.
+   * @returns {HTMLInputElement} The input element.
+   */
   function titleInput(node, parent) {
     const input = el('input', {
       type: 'text',
@@ -247,6 +290,11 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     return input;
   }
 
+  /**
+   * Render a child-count label (e.g. "(3 items)") for container nodes.
+   * @param {Object} node - The node to display the count for.
+   * @returns {HTMLElement} A span element (empty if node is not a container).
+   */
   function countNote(node) {
     if (!model.isContainer(node)) return el('span');
     return el('span', {
@@ -255,6 +303,12 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     });
   }
 
+  /**
+   * Create a type-change dropdown button for a node.
+   * Shows current type label and opens a menu to convert the node type.
+   * @param {Object} node - The json-model node whose type can be changed.
+   * @returns {HTMLElement} A wrapper div containing the type dropdown.
+   */
   function typeButton(node) {
     const wrap = el('div', { class: 'type-dropdown' });
     const btn = el(
@@ -317,20 +371,40 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
   // stored in the document); the value is always a plain string — in rich
   // mode it holds the HTML serialization.
 
+  /**
+   * Available string editing modes: input (single-line), textarea (multi-line), rich (ProseMirror).
+   * @type {Array<[string, string, string]>} Tuple of [mode, icon name, tooltip].
+   */
   const STRING_MODES = [
     ['input', 'text_fields', 'Single-line text input'],
     ['textarea', 'wrap_text', 'Resizable text field'],
     ['rich', 'edit_note', 'Rich text'],
   ];
-  const stringModes = new Map(); // property path -> mode
+  /** @type {Map<string, string>} Map from property path to active string editing mode. */
+  const stringModes = new Map();
+  /**
+   * Derive a unique string key for a node's property path.
+   * @param {Object} node - The json-model node.
+   * @returns {string} A separator-joined path key.
+   */
   const modeKeyFor = (node) => model.nodePath(api.tree, node).join('\u001f');
 
+  /**
+   * Get the active string editing mode for a node, falling back to autodetect.
+   * @param {Object} node - The json-model node.
+   * @returns {'input'|'textarea'|'rich'} The current editing mode.
+   */
   function stringModeFor(node) {
     const key = modeKeyFor(node);
     if (stringModes.has(key)) return stringModes.get(key);
     return autodetectStringMode(node.value);
   }
 
+  /**
+   * Render the string value editor with a mode-switcher and the active control.
+   * @param {Object} node - The json-model string node.
+   * @returns {HTMLElement} A div containing the mode buttons and the value input.
+   */
   function stringValueArea(node) {
     const mode = stringModeFor(node);
     const wrap = el('div', { class: 'string-value' });
@@ -359,6 +433,12 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     return wrap;
   }
 
+  /**
+   * Lazy-load the rich-text editor (ProseMirror) and mount it inside a holder div.
+   * Falls back to textarea on load failure.
+   * @param {Object} node - The json-model string node.
+   * @returns {HTMLElement} A holder div that will be populated asynchronously.
+   */
   function richHolder(node) {
     const holder = el('div', { class: 'rich-holder' },
       el('span', { class: 'muted-note', text: 'Loading editor…' }));
@@ -387,6 +467,12 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     return holder;
   }
 
+  /**
+   * Create a plain-text editing control (input or textarea) for a string node.
+   * @param {Object} node - The json-model string node.
+   * @param {'input'|'textarea'} mode - The control type to create.
+   * @returns {HTMLInputElement|HTMLTextAreaElement} The input or textarea element.
+   */
   function stringControl(node, mode) {
     if (mode === 'input') {
       const input = el('input', {
@@ -424,6 +510,12 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     return ta;
   }
 
+  /**
+   * Render the value editor body for a node based on its type.
+   * Delegates to string/number/boolean/null/container-specific renderers.
+   * @param {Object} node - The json-model node.
+   * @returns {HTMLElement} A div (prop-body) containing the value editor.
+   */
   function valueArea(node) {
     const body = el('div', { class: 'prop-body' });
 
@@ -463,6 +555,11 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     return body;
   }
 
+  /**
+   * Create a numeric input control for a number node.
+   * @param {Object} node - The json-model number node.
+   * @returns {HTMLInputElement} A number-type input element.
+   */
   function numberInput(node) {
     const input = el('input', {
       type: 'number',
@@ -480,6 +577,11 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     return input;
   }
 
+  /**
+   * Create a toggle switch for a boolean node.
+   * @param {Object} node - The json-model boolean node.
+   * @returns {HTMLElement} A label element wrapping the checkbox and slider.
+   */
   function booleanToggle(node) {
     const input = el('input', { type: 'checkbox' });
     input.checked = !!node.value;
@@ -492,6 +594,11 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
 
   // ================== ADD SECTION ==================
 
+  /**
+   * Render the "Add property/entry" section with a type selector and button.
+   * @param {Object} parent - The parent container node (object or array).
+   * @returns {HTMLElement} A div containing the add controls.
+   */
   function addSection(parent) {
     const select = el('select', { class: 'add-type' });
     for (const t of model.TYPES) {
@@ -526,6 +633,10 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
 
   // ================== COLLAPSE ==================
 
+  /**
+   * Toggle the collapsed state of a node row by id.
+   * @param {number} id - The node id to toggle.
+   */
   function toggleCollapse(id) {
     if (api.collapsed.has(id)) api.collapsed.delete(id);
     else api.collapsed.add(id);
