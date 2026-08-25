@@ -8,7 +8,9 @@ edition = "2021"
 actix-web = "4"
 actix-files = "0.6.6"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1"
+# preserve_order: Value's map keeps insertion order (IndexMap) so saved JSON
+# keeps the client's document order instead of being alphabetically sorted.
+serde_json = { version = "1", features = ["preserve_order"] }
 tokio = { version = "1", features = ["full"] }
 env_logger = "0.10"
 log = "0.4"

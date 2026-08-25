@@ -30,4 +30,6 @@ Current state: v1 backend and frontend are implemented per `TODO.md` (all phases
 ## Repo quirks
 
 - `.gitignore` ignores `*.lock`, so `Cargo.lock` is untracked — don't commit it.
+- `serde_json` is built with `preserve_order` (IndexMap): without it, every content/config save silently alphabetized JSON keys and destroyed document order. Don't remove the feature.
+- API responses send `Cache-Control: no-store` (main.rs wrap_fn) — the panel must always reflect disk; browsers otherwise heuristically cache `GET /api/...` and show stale files after edits.
 - `projects/` holds independent clones of target website repos (separate Git repositories nested inside this tree). They must never be committed to this repo; removing a project from config must not delete its checkout.

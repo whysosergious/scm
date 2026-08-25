@@ -364,8 +364,9 @@ function encodeCompact(node) {
  *
  * Rules (spec_json_edit.md §8):
  * - the target parent may not be the node itself or inside its subtree;
- * - dropping into one of the node's own gaps (before/after itself in the
- *   same list) is a no-op;
+ * - dropping into the node's own gap (same parent, index === its position
+ *   after removal) is a no-op — in post-removal index space the gaps before
+ *   and after the source are the SAME index;
  * - moving into an array clears the key; moving a keyless entry into an
  *   object generates a unique key;
  * - returns true when the tree changed.
@@ -378,7 +379,7 @@ export function moveNode(root, node, targetParent, index) {
   if (!oldParent) return false;
 
   const from = oldParent.children.indexOf(node);
-  if (oldParent === targetParent && (index === from || index === from + 1)) {
+  if (oldParent === targetParent && index === from) {
     return false; // dropped back into its own gap
   }
 

@@ -54,15 +54,22 @@ export function enableDrag({ handle, row, api, nodeId }) {
     function activate() {
       active = true;
       document.body.classList.add('dragging-active');
+      // Read dimensions first, then hide the source entirely: the
+      // placeholder becomes the only visual gap and can't intercept
+      // elementFromPoint hit-testing.
+      const h = row.offsetHeight;
       row.classList.add('drag-source');
       buildSlots(node);
 
       placeholder = el('div', { class: 'drop-placeholder' });
-      placeholder.style.height = `${row.offsetHeight}px`;
+      placeholder.style.height = `${h}px`;
       row.before(placeholder);
       currentSlot = slotAtPlaceholder();
     }
 
+    // Layout geometry uses plain client rects. The source row is hidden and
+    // placeholder moves apply no transforms, so rects are always truthful
+    // (no mid-flight FLIP measurements to skew drop-target math).
     function buildSlots(dragged) {
       slots = [];
       document
@@ -118,39 +125,16 @@ export function enableDrag({ handle, row, api, nodeId }) {
       currentSlot = best;
     }
 
-    function flipMove(mutate) {
-      if (REDUCED()) {
-        mutate();
-        return;
-      }
-      const rows = [...document.querySelectorAll('.field-item.prop-row')].filter(
-        (r) => r !== row,
-      );
-      const before = rows.map((r) => r.getBoundingClientRect().top);
-      mutate();
-      rows.forEach((r, i) => {
-        const dy = before[i] - r.getBoundingClientRect().top;
-        if (dy) {
-          r.animate(
-            [{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }],
-            { duration: 180, easing: 'ease-out' },
-          );
-        }
-      });
-    }
-
     function movePlaceholder(slot) {
-      flipMove(() => {
-        if (slot.beforeEl) slot.beforeEl.before(placeholder);
-        else if (slot.afterEl) slot.afterEl.after(placeholder);
-        else {
-          // Empty list: before the empty hint / add section, else append.
-          const hint =
-            slot.listEl.querySelector('.empty-hint') ??
-            slot.listEl.querySelector('.add-section');
-          hint ? hint.before(placeholder) : slot.listEl.append(placeholder);
-        }
-      });
+      if (slot.beforeEl) slot.beforeEl.before(placeholder);
+      else if (slot.afterEl) slot.afterEl.after(placeholder);
+      else {
+        // Empty list: before the empty hint / add section, else append.
+        const hint =
+          slot.listEl.querySelector('.empty-hint') ??
+          slot.listEl.querySelector('.add-section');
+        hint ? hint.before(placeholder) : slot.listEl.append(placeholder);
+      }
     }
 
     function slotAtPlaceholder() {

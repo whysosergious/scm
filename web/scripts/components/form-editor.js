@@ -330,14 +330,23 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
     const ta = el('textarea', {
       class: 'value-input string-input',
       spellcheck: 'false',
-      rows: '2',
+      rows: '1',
       placeholder: '',
     });
     ta.value = node.value ?? '';
+
+    // Auto-grow with content (fallback for browsers without field-sizing).
+    const autoSize = () => {
+      ta.style.height = 'auto';
+      ta.style.height = `${Math.min(ta.scrollHeight, 320)}px`;
+    };
     ta.addEventListener('input', () => {
       node.value = ta.value;
+      autoSize();
       onDirty?.();
     });
+    requestAnimationFrame(autoSize);
+
     return ta;
   }
 

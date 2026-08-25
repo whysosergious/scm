@@ -617,11 +617,16 @@ input[type="text"].title-input.invalid {
   margin-top: 1px;
 }
 
-/* String values: resizable multi-line text field */
+/* String values: auto-growing text field — one row by default, expands
+   with content (JS sets height from scrollHeight); manual vertical resize
+   still works and is kept until the next content change. */
 .prop-body textarea.value-input {
-  min-height: 52px;
+  min-height: 38px;
+  max-height: 320px;
+  overflow-y: auto;
   resize: vertical;
   line-height: 1.5;
+  field-sizing: content; /* native auto-size where supported */
 }
 .prop-row.collapsed .prop-body {
   display: none;
@@ -748,7 +753,7 @@ input[type="text"].title-input.invalid {
   cursor: grabbing !important;
 }
 .drag-source {
-  opacity: 0.35;
+  display: none; /* the placeholder is the only gap while dragging */
 }
 .drop-placeholder {
   border: 1px dashed rgba(180, 197, 255, 0.5);

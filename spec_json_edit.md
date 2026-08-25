@@ -156,9 +156,9 @@ dirty without re-rendering (keeps focus/IME behavior intact).
   sibling rows in every currently *expanded* children list, plus empty-list
   targets. Excluded automatically: the dragged node's own position, any
   container inside the dragged subtree (cycle guard), and the root.
-- Visuals: while dragging, the source row dims and a dashed insertion
-  placeholder occupies the hovered slot; displaced siblings animate via FLIP
-  transforms. All animations respect `prefers-reduced-motion`.
+- Visuals: while dragging, the source row is **hidden** (the dashed insertion
+  placeholder is the only gap), displaced rows reflow instantly so drop-target
+  geometry stays exact. All animations respect `prefers-reduced-motion`.
 - Collapsed containers become droppable by hovering them ~400 ms, which
   auto-expands them mid-drag.
 - Commit: on release, the model performs `moveNode` (§8 rules: cycle guard,
