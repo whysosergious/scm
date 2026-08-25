@@ -1,4 +1,4 @@
-// Pure tree model for the JSON form editor (spec_json_edit.md §3).
+// Pure tree model for the JSON form editor (spec.md §9.2).
 // No DOM access here — everything is testable without a browser.
 
 export const TYPES = ['string', 'number', 'boolean', 'object', 'array', 'null'];
@@ -284,7 +284,7 @@ export function uniqueKey(parent, base = 'property') {
 
 /**
  * Convert a node to another type applying the smart-coercion table
- * (spec_json_edit.md §9). Mutates the node.
+ * (spec.md §9.5). Mutates the node.
  */
 export function convertType(node, type) {
   if (!TYPES.includes(type) || node.type === type) return;
@@ -380,7 +380,7 @@ function encodeCompact(node) {
  * list as it will be WITHOUT the dragged node (this is what the drag layer
  * computes from the placeholder position).
  *
- * Rules (spec_json_edit.md §8):
+ * Rules (spec.md §9.7):
  * - the target parent may not be the node itself or inside its subtree;
  * - dropping into the node's own gap (same parent, index === its position
  *   after removal) is a no-op — in post-removal index space the gaps before
@@ -434,7 +434,7 @@ function deepClone(node) {
 
 /**
  * Deep-copy `node` and insert the copy directly after it in the same parent
- * (spec_json_edit.md §7). Object copies get a unique key derived from the
+ * (spec.md §9.3). Object copies get a unique key derived from the
  * original (`name` → `name2`); array copies need none. Returns the new node
  * or null when `node` has no parent (root).
  */

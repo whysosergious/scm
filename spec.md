@@ -6,104 +6,97 @@ SCM means **Static Content Manager**.
 
 SCM is a local-first application for managing content for static websites. It is intended for developer blogs, regular blogs, portfolios, restaurant websites, and other sites that can be hosted by GitHub Pages or another static hosting provider.
 
-The first version stores content as JSON files inside a target website repository. The user edits those files through a local web control panel. SCM then commits and pushes changes using Git.
+Content is stored as JSON files inside the target website repository. The user edits those files through a local web control panel that offers both structured form editing (with a rich text editor for prose) and raw JSON editing. SCM then commits and pushes changes using Git.
 
 The target website remains self-contained and independently deployable. SCM is only the local management tool.
 
-## 2. Initial scope
+## 2. Scope
 
-The first version must support:
+The first version supports:
 
 - Multiple configured website projects.
-- A local checkout for each configured project.
-- Project selection in the control panel.
-- JSON content discovery.
-- Editing arbitrary valid JSON.
+- A local checkout for each configured project (clone-on-demand).
+- Project selection in the control panel (persisted per browser).
+- JSON content discovery (direct children of `content_dir`).
+- Editing arbitrary valid JSON through recursive property forms or raw JSON.
+- Three editor modes for string values: single-line input, resizable text field, rich text (ProseMirror with HTML or Markdown storage).
 - JSON syntax validation before saving.
-- Git-based publishing.
-- A static control-panel frontend.
-- Configuration editing through the control panel at a basic level.
+- Drag-and-drop sorting of properties and entries, including across containers.
+- Git-based publishing (stage content dir → commit → push).
+- A static control-panel frontend (vanilla ES modules; the rich text editor ships as a pre-built bundle).
+- Configuration editing through the control panel.
 
-The first version must not require:
+The first version does not require:
 
 - A database.
 - A production web server.
 - A hosted CMS backend.
-- Content schemas.
-- A fixed post or project data model.
+- Content schemas or a fixed post/project data model.
 - Nested content directories.
 - FTP or SFTP publishing.
-- A rich-text editor.
 - A build system for the target website.
-- Shadow DOM for every frontend component.
 
 ## 3. Technology stack
 
 ### Backend
 
-The backend must use:
-
-- Rust.
-- The current stable Rust toolchain where practical.
+- Rust (current stable where practical).
 - Tokio for asynchronous runtime functionality.
 - Actix Web as the HTTP framework.
-
-The implementation must use the modern Actix Web and Tokio integration and must not use Actix actors as the application architecture. Actix Web is used for HTTP routing, request handling, middleware, and server operation; application state and services should use ordinary Rust structures, Tokio tasks, synchronization primitives, and asynchronous functions where appropriate.
-
-Do not introduce `actix` actor traits, actor messages, actor mailboxes, or an actor-based application design unless a narrowly scoped dependency explicitly requires them.
+- Modern Actix Web/Tokio integration; **no Actix actors** — application state is ordinary Rust structures (`Arc<RwLock<_>>`), Tokio tasks, and async functions.
+- Blocking filesystem/Git work goes through Tokio blocking facilities (`spawn_blocking`, `tokio::fs`, `tokio::process`).
+- Git is driven through the `git` CLI so a missing executable is a detectable, user-facing failure.
+- `serde_json` is built with the `preserve_order` feature: JSON key order survives every save (without it, saves silently alphabetize keys and destroy document order).
 
 ### Frontend
 
-The frontend must use:
-
-- Standard HTML.
-- Standard CSS.
-- Vanilla JavaScript.
-- JavaScript modules.
-- Web Components through custom elements where useful.
-
-Components should normally render into the regular document DOM. Shadow DOM must not be used automatically for every component. It should only be used when real DOM or style encapsulation is necessary.
-
-The initial frontend may use a simple static structure and example data. It must later be connected to the Rust API without requiring a framework migration.
+- Standard HTML, standard CSS, vanilla JavaScript ES modules.
+- Custom elements where useful; light DOM only — no automatic Shadow DOM.
+- No framework and no runtime bundler. The **single exception** is the rich text editor: ProseMirror is pre-built with vite from `editor-src/` into a self-contained, committed ES bundle (`web/scripts/vendor/rich-editor.bundle.js`) that the app lazy-imports at runtime. npm/vite are never needed to launch the frontend — only when changing the editor component.
+- The control panel is a fixed-viewport layout: only the canvas scrolls; sidebar and header stay put. Scrollbars are styled to match the theme.
 
 ## 4. Repository structure
 
-The SCM repository should have this general structure:
-
 ```text
 scm/
-├── Cargo.toml
-├── scm-config.json
-├── scm-config.example.json
-├── .gitignore
+├── Cargo.toml              # crate is still named wss_serve (legacy)
+├── scm-config.json         # live configuration (created/edited via panel)
+├── .env                    # HOST/PORT (copy .env.template)
+├── spec.md                 # this document
 ├── src/
-│   ├── main.rs
-│   ├── config.rs
-│   ├── setup.rs
-│   ├── project.rs
-│   ├── content.rs
-│   ├── git.rs
+│   ├── main.rs             # startup only: dotenv → load config → serve
+│   ├── config.rs           # types + load/validate/atomic-save scm-config.json
+│   ├── setup.rs            # AppState (Arc<RwLock<AppConfig>>) + bootstrap
+│   ├── project.rs          # checkout lifecycle: clone-on-demand, verify
+│   ├── content.rs          # discovery + load/save JSON files
+│   ├── git.rs              # thin wrapper over git CLI (tokio::process)
+│   ├── error.rs            # ScmError: category + status → JSON error shape
+│   ├── paths.rs            # shared path-safety helpers (unit-tested)
 │   └── http/
 │       ├── mod.rs
-│       └── routes.rs
+│       ├── routes.rs       # static routes + /api scope registration
+│       └── api.rs          # API handlers
 ├── web/
 │   ├── index.html
-│   ├── styles/
+│   ├── styles/             # base.css, layout.css, components.css
 │   └── scripts/
-└── projects/
+│       ├── main.js         # bootstrap: store subscription → view rendering
+│       ├── state.js        # tiny pub/sub store + selection rules
+│       ├── api.js          # fetch wrappers, unwraps the error shape
+│       ├── dom.js          # light-DOM helpers
+│       ├── json-model.js   # order-preserving JSON tree model (own parser)
+│       ├── components/     # form-editor, json-editor, dnd, panels, toast…
+│       └── vendor/         # committed rich-editor.bundle.js (ProseMirror)
+├── editor-src/             # npm project for the rich editor (build-time only)
+├── tools/e2e/              # headless regression suite + harness docs
+└── projects/               # local checkouts of target repos (git-ignored)
 ```
 
-`web/` contains the SCM control panel.
-
-`projects/` contains local checkouts of configured target websites. It must be ignored by the SCM repository because each directory inside it is an independent Git repository.
-
-The target website repositories must not be embedded as source code inside the SCM repository. They are managed working copies.
+`projects/` holds independent clones of the target website repositories (separate Git repositories nested inside this tree). They must never be committed to the SCM repository, and removing a project from the configuration must not delete its checkout.
 
 ## 5. Configuration
 
-The initial configuration file is `scm-config.json` at the SCM repository root.
-
-Initial configuration format:
+The configuration file is `scm-config.json` at the SCM repository root.
 
 ```json
 {
@@ -121,357 +114,236 @@ Initial configuration format:
 }
 ```
 
-### Configuration fields
+### `config_version`
 
-#### `config_version`
+An integer identifying the configuration format version. The only supported value is `1`; anything else is rejected with an explicit error.
 
-An integer identifying the configuration format version.
+### `projects_dir`
 
-The first supported value is `1`.
+Path to the directory containing local project checkouts, relative to the SCM working directory. Absolute paths and `..` traversal are rejected.
 
-#### `projects_dir`
-
-A path to the directory containing local project checkouts.
-
-The path is relative to the SCM application working directory. Absolute paths are not required in version one and should be rejected unless explicitly supported later.
-
-#### `projects`
+### `projects`
 
 An array of configured target website projects.
 
 #### Project `id`
 
-A stable unique identifier for the project.
-
-The ID is used for:
-
-- Project selection.
-- Local checkout directory naming.
-- Internal references.
-- Future API routes.
-
-The ID must be safe for use as a directory name. It must not contain path separators, `..`, or other path traversal sequences.
+Stable unique identifier used for selection, checkout directory naming, and API routes. Must be safe as a directory name: non-empty ASCII letters/digits/`_`/`-`, no separators, no `..`.
 
 #### Project `name`
 
-A human-readable display name shown in the control panel.
-
-The name may be changed without changing the local checkout directory.
+Human-readable display name. May change without affecting the checkout directory or the stored selection.
 
 #### Project `repo`
 
-The Git repository URL used to clone the project.
-
-The implementation should not assume that all repositories use HTTPS. SSH repository URLs may be supported by Git automatically, depending on the user’s local Git configuration.
+Git repository URL. HTTPS and SSH both work through the user's local Git configuration.
 
 #### Project `branch`
 
-The Git branch SCM operates on for the target project.
-
-The first version should require this value instead of assuming a branch name.
+The branch SCM operates on. Required — no default is assumed.
 
 #### Project `content_dir`
 
-A directory path relative to the root of the target repository.
+Directory path relative to the target repository root. Must be relative and must not escape the checkout through traversal.
 
-For the example configuration, the effective path is:
+### Validation and persistence
 
-```text
-projects/wss-index/content/
-```
-
-The value must be relative and must not escape the target repository through path traversal.
+Every save validates the complete document: version, relative paths, project id format, uniqueness of ids, non-empty name/repo/branch. Writes are atomic: temp file in the same directory → flush/sync → rename. Unknown top-level and per-project keys are preserved across round-trips (`#[serde(flatten)]`).
 
 ## 6. Project lifecycle
 
-At startup, SCM must:
+At startup, SCM:
 
-1. Load `scm-config.json`.
-2. Parse and validate the configuration.
-3. Resolve the projects directory.
-4. Make the configured project information available to the control panel.
-5. Start the local HTTP server.
+1. Loads `scm-config.json`.
+2. Parses and validates it; refuses to start with a readable error otherwise.
+3. Resolves the projects directory.
+4. Makes the configuration available to the control panel.
+5. Starts the local HTTP server.
 
-A project checkout should be initialized when required, preferably when the project is first selected or accessed.
+A checkout is initialized lazily — when a project is first selected/accessed:
 
-For a project whose checkout does not exist:
+- If the checkout directory does not exist: `git clone --branch <branch> <repo> projects/<id>`.
+- If it exists, SCM verifies: it is a directory, it is a Git working tree, an `origin` remote exists and matches the configured repository (normalized comparison: trailing `/`, trailing `.git`, case), and the configured branch exists locally or on origin. Any mismatch is a hard error naming the problem — SCM never silently reuses a wrong checkout and never deletes one.
 
-```text
-clone project.repo into projects_dir/project.id
-```
-
-For a project whose checkout already exists, SCM must verify that:
-
-- The path is a directory.
-- It is a Git working tree.
-- A Git remote exists.
-- The configured repository corresponds to the checkout’s remote.
-- The configured branch can be used.
-
-SCM must not silently reuse an existing directory with a different remote.
-
-SCM must not automatically delete an existing checkout when a project is removed from the configuration.
-
-Removing a project from `scm-config.json` and deleting its local files are separate operations.
+Removing a project from the configuration never touches its files on disk.
 
 ## 7. Project selection state
 
-The selected project is UI state and must not be stored in `scm-config.json`.
+The selected project is UI state, stored in browser `localStorage` (key `scm:selected-project-id`), never in `scm-config.json`.
 
-The control panel should store the selected project ID in browser `localStorage`.
-
-Selection behavior:
+Selection rules:
 
 ```text
-If projects is empty:
-    display an import-project modal or equivalent empty state.
-
-If projects is not empty:
-    restore the selected project ID from localStorage.
-
-If the stored project ID no longer exists:
-    select the first project in the projects array.
+If projects is empty:      show the import-project modal / empty state.
+If the stored id exists:   select it.
+Otherwise:                 select the first project in the array.
 ```
 
-Changing the display name must not invalidate the stored selection because selection uses the stable project ID.
+Selection uses the stable id, so renaming a project never breaks it. Selecting a project whose checkout is missing triggers the clone automatically.
 
 ## 8. Content discovery
 
-SCM must discover content dynamically rather than using hardcoded content filenames.
+SCM resolves `checkout + content_dir` (traversal-checked) and scans only its direct child entries. A file is a content entry when it is a regular file (symlinks excluded) with the `.json` extension. Nested directories are ignored.
 
-For the selected project, SCM resolves:
-
-```text
-project checkout + content_dir
-```
-
-It then scans only the direct child entries of that directory.
-
-A file is treated as a content entry when:
-
-- It is a regular file.
-- Its filename has the `.json` extension.
-- It is directly inside `content_dir`.
-
-Nested directories are ignored in version one.
-
-Example:
-
-```text
-content/
-├── posts.json          discovered
-├── projects.json       discovered
-├── pages.json          discovered
-└── articles/
-    └── archive.json    ignored in version one
-```
-
-If the configured content directory does not exist, SCM may offer to create it.
-
-If the directory exists but contains no JSON files, the control panel should offer to create a JSON content file.
-
-`posts.json` is the first expected content file for the initial website, but it is not hardcoded as the only supported file.
-
-The initial implementation must allow any valid JSON root value, including:
-
-- Object.
-- Array.
-- String.
-- Number.
-- Boolean.
-- Null.
-
-SCM must not assume that every content file contains a particular field structure.
+If the content directory is missing, the UI offers to create it. If it contains no JSON files, the UI offers to create one. Any valid JSON root value is allowed: object, array, string, number, boolean, null.
 
 ## 9. JSON editing
 
-The first editor is a basic JSON file editor.
+The editor opens a file in one of two tabs — **Form** (default) and **JSON** — sharing one action bar (Cancel / Save) and one dirty/save flow. The backend stays authoritative: saves validate JSON server-side, writes are atomic.
 
-It must:
+### 9.1 Modes
 
-- Load the complete selected JSON file.
-- Display its contents for editing.
-- Validate JSON syntax before saving.
-- Refuse to save malformed JSON.
-- Preserve fields and structures that SCM does not interpret.
-- Write the complete updated JSON document back to the same file.
+- Switching **JSON → Form** requires the textarea to contain valid JSON; otherwise an inline error is shown and the view stays on JSON.
+- Switching **Form → JSON** serializes the current form state to pretty JSON (2-space) live.
+- Saving serializes from whichever mode is active; Cancel restores the on-disk state in both modes.
 
-Version one does not define content schemas or fixed form fields.
+### 9.2 Data model
 
-There must be no automatic conversion of `posts.json` into a predefined post model.
+Forms render from an explicit tree model (`web/scripts/json-model.js`), never from `JSON.parse` output — JS objects reorder integer-like keys, which would destroy document order. The module contains its own small recursive-descent JSON parser and emits serialization text directly from the tree.
 
-Future versions may provide a dynamic visual editor with draggable fields and user-defined structures. That is outside the initial implementation.
+```text
+Node { id, key, type, value, children }
+type: "string" | "number" | "boolean" | "object" | "array" | "null"
+```
+
+Ids are stable per parse and drive drag-and-drop keys and collapse state. Model operations are pure: `parse`, `serialize`, `renameKey` (rejects empty/duplicate), `uniqueKey`, `convertType` (smart coercion table), `moveNode` (post-removal index semantics, cycle guard), `cloneNode` (deep copy, fresh ids, unique derived key), `removeNode`, `addChild`, `nodePath`.
+
+### 9.3 Property row anatomy
+
+```text
+[drag handle] [name/title] [type ▾]        [clone] [chevron] [×]
+              [value input | nested children …]
+              [add property / add entry]
+```
+
+- **Name**: an input styled as plain bold text; the editing affordance appears on focus. Commits on Enter/blur; empty or duplicate keys are rejected inline and Escape restores the previous key.
+- **Array entries** show immutable `[n]` index badges as plain text; badges re-index automatically after any add/delete/clone/move.
+- **Type selector**: text with a dropdown affordance; options are exactly String, Number, Boolean, Object, Array, Null. Switching applies smart coercion (best-effort conversion, e.g. `"42"`→42, object→array drops keys, array→object re-keys by index) with lossless-where-trivial, empty-default otherwise.
+- **Right-side action cluster**: Clone (deep copy inserted directly below the original; object copies get `name2`-style keys and focused renaming), chevron (collapse/expand), delete `×` (immediate; Cancel restores from disk).
+
+### 9.4 Value controls
+
+| Type | Control |
+|---|---|
+| String | one of three switchable modes, below |
+| Number | `<input type="number" step="any">` |
+| Boolean | toggle switch |
+| Null | disabled note reading `null` |
+| Object | recursive nested container + "Add property" |
+| Array | recursive nested container + "Add entry" |
+
+Value areas are direct children of the row element and span its full width. Typing updates the model without re-rendering. Empty containers show muted hints.
+
+### 9.5 String editor modes
+
+A compact three-button switcher sits above every string value control:
+
+| Mode | Icon | Control | Value semantics |
+|---|---|---|---|
+| Text input | `text_fields` | single-line `<input type="text">` | raw string |
+| Text field | `wrap_text` | auto-growing, vertically resizable textarea (themed corner grip) | raw string (multi-line) |
+| Rich text | `edit_note` | ProseMirror WYSIWYG with toolbar (bold/italic/code, lists, quote, undo/redo) | HTML **or** Markdown string |
+
+Rules:
+
+- The mode is **autodetected** for untouched properties: HTML-looking values and Markdown-marked values (headings, list markers, `**bold**`, inline code, links, fences) open in rich mode; multi-line plain text or strings longer than 100 characters open as a text field; everything else as a text input. Single-underscore emphasis is deliberately NOT a markdown marker (false-positives on URLs and snake_case). Once the user switches modes manually, the choice is remembered per property path (in-memory, per session).
+- The rich editor autodetects the **storage format** and round-trips it: HTML values parse/serialize as HTML; everything else (including plain text) as CommonMark Markdown. Raw HTML inside Markdown is treated as literal text.
+- Switching modes never destroys data: the raw string carries over.
+- The value is always a plain JSON string, so static sites consume it directly and no server-side changes are required.
+
+### 9.6 Collapse
+
+Every non-root row collapses via its chevron to a single head row. Collapsed object/array rows show `(n items)` with the direct child count. Collapse state is per node id and resets when the file is reloaded or re-parsed from the JSON tab. Newly added nodes render expanded, with object copies/names focused for immediate renaming.
+
+### 9.7 Drag & drop sorting
+
+- Initiation: pointerdown on the drag handle only, with a movement threshold; pointer capture is used throughout.
+- Scope: **cross-parent moves are allowed**. Drop targets are the gaps between sibling rows in every currently expanded children list, plus empty lists. Excluded automatically: the dragged node's own gap, any container inside the dragged subtree (cycle guard), and the root.
+- Visuals: the source row is hidden while dragging — the dashed insertion placeholder is the only gap — and displaced rows reflow instantly so drop-target geometry is always exact. Animations respect `prefers-reduced-motion`.
+- Collapsed containers become droppable by hovering them ~400 ms, which auto-expands them mid-drag.
+- Commit: `moveNode` applies the cycle guard and the key rules (named property → array drops the key; array entry → object generates a unique `item`-style key); Escape or pointercancel aborts.
+- Implementation is dependency-free: pointer events + layout measurements, no libraries.
 
 ## 10. Configuration editing
 
-The control panel will eventually be able to edit the complete `scm-config.json` document.
-
-The initial control panel may provide a simple static configuration editor, but all configuration changes must be validated before being written.
-
-A configuration save must:
-
-1. Parse the proposed JSON.
-2. Validate the required configuration structure.
-3. Validate project IDs and paths.
-4. Validate that project IDs are unique.
-5. Write the replacement safely.
-
-SCM must not replace the active configuration with malformed JSON.
-
-Configuration writes should be atomic: write a temporary file, flush/close it successfully, then replace the original configuration file.
-
-Unknown future configuration properties should not be destroyed when the configuration is edited. The editor should preserve valid properties that are not currently understood.
+The control panel edits the complete `scm-config.json` as raw pretty JSON: client-side Validate (syntax), then Save sends the whole document to `PUT /api/config`, which validates (schema, ids, paths, uniqueness), writes atomically, and swaps the in-memory state. Validation errors surface verbatim. Unknown keys survive every round-trip.
 
 ## 11. Git publishing
 
-Git is the first publishing mechanism.
-
-The target project is a local Git checkout. SCM writes content files into that checkout and uses Git to publish changes.
-
-The initial publishing flow is:
+Publishing stages **only the configured content directory**, then commits and pushes the configured branch:
 
 ```text
-Edit JSON content
-    → validate JSON
-    → save JSON locally
-    → inspect Git status
-    → stage relevant content changes
-    → create a commit
-    → push the configured branch
+Edit content → validate JSON → save locally → stage content dir
+→ commit (default message "Update content") → push origin <branch>
 ```
 
-SCM should stage the configured content directory or explicit changed content files rather than blindly staging the entire target repository.
-
-The first version should provide clear results for:
-
-- No changes to publish.
-- Successful commit and push.
-- Commit failure.
-- Push failure.
-- Authentication failure.
-- Remote changes that prevent pushing.
-- Merge conflicts.
-- Missing Git executable.
-- Invalid target repository.
-
-Local content must not be deleted or reverted automatically when a Git operation fails.
-
-SCM must not store GitHub tokens or FTP credentials in the public target website.
-
-Future versions may support FTP, SFTP, or other publishing providers through a configurable publishing abstraction. These providers are outside version one.
+The publish endpoint returns HTTP 200 with a discriminated `outcome` covering every case: `no_changes`, `committed_and_pushed`, `commit_failed`, `push_failed`, `auth_failed`, `remote_rejected` (non-fast-forward), `merge_conflict`, `git_missing`, `invalid_repo`. The UI renders each outcome distinctly and offers retry. Local content is never deleted or reverted when a Git operation fails.
 
 ## 12. HTTP server
 
-The Rust application must start a local HTTP server that serves:
+The Rust application serves the control panel from `web/` and a JSON API under `/api`:
 
-- The control-panel frontend from `web/`.
-- API routes for configuration, projects, content discovery, content loading, content saving, and Git operations as those features are implemented.
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/config` | current configuration (as stored) |
+| POST | `/api/config` | validate full document → atomic save → swap state |
+| GET | `/api/projects` | configured projects + live checkout status |
+| POST | `/api/projects` | import project (optional immediate clone) |
+| DELETE | `/api/projects/{id}` | remove from config only; disk untouched |
+| POST | `/api/projects/{id}/checkout` | clone-or-verify checkout |
+| POST | `/api/projects/{id}/ensure-content-dir` | create missing content dir |
+| GET/POST | `/api/projects/{id}/content` | list `.json` entries / create file |
+| GET/PUT | `/api/projects/{id}/content/{name}` | load raw / validate + save |
+| GET | `/api/projects/{id}/git/status` | parsed porcelain status |
+| POST | `/api/projects/{id}/publish` | stage → commit → push |
 
-The server is a local development/control-panel server. It is not intended to be deployed as the public website backend.
+Errors use `{"error": {category, message, detail}}` with categories `config`, `invalid-json`, `not-found`, `git`, `filesystem`, `network-remote`, `internal`. API responses carry `Cache-Control: no-store` so the panel always reflects disk.
 
-The public target websites must remain static and self-contained.
-
-Blocking filesystem or Git operations must not block the asynchronous runtime unnecessarily. Where required, use appropriate Tokio facilities such as blocking tasks or a dedicated controlled task boundary.
+The server is a local development/control-panel server, not a public website backend.
 
 ## 13. Frontend structure
-
-The control panel begins as a single HTML sketch supplied by the project owner.
-
-Before implementing the rest of the system, the frontend task is to dissect the sketch into:
-
-- Shared stylesheet files.
-- Layout sections.
-- Reusable example components.
-- JavaScript modules.
-- Initial application state.
-
-The visual appearance and interaction intent of the sketch should be preserved during decomposition.
-
-A possible structure is:
 
 ```text
 web/
 ├── index.html
-├── styles/
-│   ├── base.css
-│   ├── layout.css
-│   └── components.css
+├── styles/            # base.css (tokens/resets), layout.css, components.css
 └── scripts/
-    ├── main.js
-    ├── state.js
-    ├── api.js
-    ├── components/
-    └── views/
+    ├── main.js        # bootstrap + render loop
+    ├── state.js       # pub/sub store, selection rules, refresh helpers
+    ├── api.js         # fetch wrappers
+    ├── dom.js         # light-DOM helpers
+    ├── json-model.js  # order-preserving JSON tree model
+    ├── components/    # project-selector, import-modal, content-list,
+    │                  # project-info, git-status, json-editor (tabs),
+    │                  # form-editor, dnd, config-editor, toast
+    └── vendor/        # rich-editor.bundle.js (committed build output)
 ```
 
-This structure is illustrative and may be adjusted based on the actual sketch.
+Layout: fixed-viewport flex — sidebar (collapsible, with a hover fly-out for the file list when collapsed), header, and a canvas that is the only scrolling element. Custom scrollbars match the theme. The visual language follows the original control-panel sketch.
 
-The frontend should avoid introducing a framework or bundler unless a later requirement justifies it.
+## 14. Control-panel areas
 
-## 14. Initial control-panel areas
-
-The static control panel should provide or represent these areas:
-
-- Project selector.
-- Empty-project state with an import-project action.
-- Project information.
-- Content-file list.
-- JSON editor area.
-- Save action.
-- Git status area.
-- Publish action.
-- Configuration editor area.
-
-These may initially use mock data and placeholder actions while the backend API is being developed.
+- Project selector (header dropdown with per-project checkout badges, import, remove-from-config).
+- Empty-project state with an import-project modal.
+- Project information (repo/branch/content dir, checkout status, publish action).
+- Content-file list (collapsible "Content" category in the sidebar; hover fly-out when the sidebar is collapsed; "+ Add" button).
+- JSON editor area (Form | JSON tabs).
+- Save action (dirty tracking, Cancel restores disk state).
+- Git status area (header summary + per-project status panel with refresh).
+- Publish action with confirm dialog and per-outcome toasts.
+- Configuration editor (Settings view).
 
 ## 15. Error and safety requirements
 
-SCM must validate all paths derived from configuration or user input.
+SCM validates all paths derived from configuration or user input and rejects: absolute paths where relative is expected, `..` traversal, path separators in project ids and content filenames, duplicate project ids, content paths outside the target repository, and existing target directories that are not valid checkouts.
 
-It must reject:
+Errors are user-readable with technical detail kept for the log, shaped as `{"error": {category, message, detail}}` and distinguished between: invalid configuration, invalid JSON content, missing files/directories, Git failures, filesystem failures, network/remote failures. All writes (config and content) are atomic. Local content is never auto-reverted or deleted when a Git operation fails.
 
-- Absolute paths where only relative paths are expected.
-- `..` path traversal.
-- Project IDs containing path separators.
-- Duplicate project IDs.
-- Content paths outside the target repository.
-- Existing target directories that are not valid expected checkouts.
+## 16. Out of scope
 
-SCM should produce user-readable errors while retaining useful technical details for logs.
+Still postponed: content schemas and schema-driven validation, multi-select drag, keyboard-based drag alternatives, undo/redo history for form edits (Cancel restores from disk), media/image management, image upload processing, user authentication, multi-user access, remote/hosted SCM operation, FTP/SFTP publishing, deployment-provider plugins, automatic npm installs on the target site, automatic target-site builds, production packaging, public API authentication.
 
-Errors should distinguish between:
-
-- Invalid configuration.
-- Invalid JSON content.
-- Missing files or directories.
-- Git failures.
-- Filesystem failures.
-- Network or remote failures.
-
-## 16. Out of scope for version one
-
-The following are intentionally postponed:
-
-- Content schemas.
-- Dynamic schema-driven forms.
-- Draggable form-field design.
-- Rich-text editing.
-- Markdown conversion requirements.
-- Recursive content discovery.
-- Media management.
-- Image upload processing.
-- User authentication.
-- Multi-user access.
-- Remote/hosted SCM operation.
-- FTP publishing.
-- SFTP publishing.
-- Deployment-provider plugins.
-- Automatic npm or other package-manager installation.
-- Automatic target-site builds.
-- Production packaging.
-- Public API authentication.
-
-## 17. Initial success criteria
+## 17. Success criteria
 
 The first version is successful when a user can:
 
@@ -481,9 +353,9 @@ The first version is successful when a user can:
 4. Have the repository cloned into the configured projects directory when needed.
 5. Select the target project.
 6. See direct `.json` files in its configured content directory.
-7. Open and edit `posts.json`.
-8. Save valid JSON.
-9. Receive an error instead of saving invalid JSON.
-10. View the target project’s Git status.
-11. Commit and push the content change.
+7. Open a file and edit it through property forms — rename, change types, clone, delete, collapse, drag within and across containers.
+8. Toggle a string property between text input, text field, and rich text (ProseMirror), with HTML/Markdown autodetected and round-tripped losslessly.
+9. Switch to the raw JSON view and see form edits reflected; invalid JSON blocks both saving and switching back.
+10. Save valid JSON; receive an error instead of saving invalid JSON; Cancel restores the on-disk state.
+11. View the target project's Git status and commit + push content changes.
 12. Keep the target website independently hostable as a static website.

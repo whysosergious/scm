@@ -1,4 +1,4 @@
-// Cross-parent drag & drop for form rows (spec_json_edit.md §8).
+// Cross-parent drag & drop for form rows (spec.md §9.7).
 // Pointer-event based, no libraries. FLIP animations respect
 // prefers-reduced-motion.
 

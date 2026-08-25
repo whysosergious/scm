@@ -1,4 +1,4 @@
-// File editor container (spec_json_edit.md §2): "Form" and "JSON" modes
+// File editor container (spec.md §9.1): "Form" and "JSON" modes
 // over one document, sharing a single dirty/save flow. The backend stays
 // authoritative (spec §9).
 

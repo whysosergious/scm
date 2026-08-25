@@ -1,6 +1,6 @@
 # SCM Implementation Plan
 
-Derived from `spec.md` (authoritative product spec) and `spec_json_edit.md`
+Derived from `spec.md` (authoritative product spec; the JSON editor spec was merged into it as §9)
 (form-based JSON editor, owner-approved scope amendment). Backend v1 and the
 frontend wiring of phases 0–9 are **complete**; this file now tracks the form
 editor work.
@@ -11,7 +11,7 @@ editor work.
       `config`, `git`, `project`, `content`, `setup`), HTTP API under `/api`,
       frontend decomposition + state/api wiring, publishing UX, config editor,
       empty states, security pass, headless e2e verification.
-- [x] Phases J0–J4 below: JSON form editor per `spec_json_edit.md`.
+- [x] Phases J0–J4 below: JSON form editor per `spec.md` §9.
 - [ ] Phase J5 polish items (partially done: Esc-cancel rename, focus
       management, empty hints, reduced-motion already implemented).
 
@@ -42,7 +42,7 @@ web/styles/components.css    appended styles using existing tokens only
 
 ## Phase J0 — Spec + data model
 
-- [x] Write `spec_json_edit.md` (done — modes, tree model, row anatomy,
+- [x] Write the editor spec (done — merged into `spec.md` §9; — modes, tree model, row anatomy,
       nesting/index badges, collapse+counts, delete/add, cross-parent DnD with
       cycle guard and key-across-containers rules, coercion table,
       validation, acceptance criteria).
@@ -127,7 +127,7 @@ behavior unchanged for JSON tab.
 - [x] Backend suite green: `cargo check`, `cargo test` (15 tests).
 - [x] Constraint sweep: no npm/bundler/framework traces, no Shadow DOM, light-DOM only, animations honor reduced-motion.
 
-**Done when:** all 12 acceptance criteria of `spec_json_edit.md` verified
+**Done when:** all 12 acceptance criteria of `spec.md` §9.11 verified
 headlessly plus full manual smoke at `/`.
 
 ## Phase J5 — Polish

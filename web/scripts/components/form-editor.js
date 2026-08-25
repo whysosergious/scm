@@ -1,4 +1,4 @@
-// Recursive form renderer for JSON documents (spec_json_edit.md §4–§7).
+// Recursive form renderer for JSON documents (spec.md §9.3–§9.5).
 // Light DOM only; visual language reused from the original sketch classes.
 
 import * as model from '../json-model.js';
