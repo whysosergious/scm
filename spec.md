@@ -63,12 +63,16 @@ scm/
 ├── scm-config.json         # live configuration (created/edited via panel)
 ├── .env                    # HOST/PORT (copy .env.template)
 ├── spec.md                 # this document
+├── spec_page_editor.md     # page editor specification (authoritative for §19)
 ├── src/
 │   ├── main.rs             # startup only: dotenv → load config → serve
 │   ├── config.rs           # types + load/validate/atomic-save scm-config.json
 │   ├── setup.rs            # AppState (Arc<RwLock<AppConfig>>) + bootstrap
 │   ├── project.rs          # checkout lifecycle: clone-on-demand, verify
 │   ├── content.rs          # discovery + load/save JSON files
+│   ├── pages.rs            # page discovery + load/save (mirrors content.rs)
+│   ├── pages_gen.rs        # static HTML generation from page tree
+│   ├── pages_import.rs     # HTML → page JSON import (html5ever)
 │   ├── git.rs              # thin wrapper over git CLI (tokio::process)
 │   ├── error.rs            # ScmError: category + status → JSON error shape
 │   ├── paths.rs            # shared path-safety helpers (unit-tested)
@@ -86,7 +90,10 @@ scm/
 │       ├── api.js          # fetch wrappers, unwraps the error shape
 │       ├── dom.js          # light-DOM helpers
 │       ├── json-model.js   # order-preserving JSON tree model (own parser)
-│       ├── components/     # form-editor, json-editor, dnd, panels, toast…
+│       ├── page-model.js   # page tree model: nodes, nesting, validation
+│       ├── components/     # form-editor, json-editor, dnd, panels, toast,
+│       │                   # pages-list, page-editor, page-canvas,
+│       │                   # page-palette, page-inspector
 │       └── vendor/         # committed rich-editor.bundle.js (ProseMirror)
 ├── tools/e2e/              # headless regression suite + harness docs
 └── projects/               # local checkouts of target repos (git-ignored)
@@ -297,11 +304,12 @@ The control panel edits the complete `scm-config.json` as raw pretty JSON: clien
 
 ## 11. Git publishing
 
-Publishing stages **the configured content directory** and **media directory** (when present), then commits and pushes the configured branch:
+Publishing stages **the configured content directory**, **media directory** (when present), and **the pages directory** (when present), then commits and pushes the configured branch:
 
 ```text
 Edit content → validate JSON → save locally → stage content dir
 (+ media_dir when present; + public/images for backwards compatibility)
+(+ pages/ when present; + root index.html when generated)
 → commit (default message "Update content") → push origin <branch>
 ```
 
@@ -328,6 +336,14 @@ The Rust application serves the control panel from `web/` and a JSON API under `
 | POST | `/api/projects/{id}/media` | upload media (raw bytes, dedup) |
 | POST | `/api/projects/{id}/media/{name}/rename` | rename media (409 on conflict) |
 | DELETE | `/api/projects/{id}/media/{name}` | delete media file |
+| GET | `/api/projects/{id}/pages` | list page JSON files |
+| GET | `/api/projects/{id}/pages/{name}` | load page JSON |
+| POST | `/api/projects/{id}/pages` | create page |
+| PUT | `/api/projects/{id}/pages/{name}` | save page JSON |
+| DELETE | `/api/projects/{id}/pages/{name}` | delete non-index page |
+| POST | `/api/projects/{id}/pages/{name}/generate` | generate static HTML |
+| POST | `/api/projects/{id}/pages/import` | import HTML into page JSON |
+| GET | `/api/projects/{id}/pages/{name}/preview` | serve generated HTML |
 | POST | `/api/projects/{id}/publish` | stage → commit → push |
 
 Errors use `{"error": {category, message, detail}}` with categories `config`, `invalid-json`, `not-found`, `git`, `filesystem`, `network-remote`, `internal`. API responses carry `Cache-Control: no-store` so the panel always reflects disk.
@@ -346,9 +362,12 @@ web/
     ├── api.js         # fetch wrappers
     ├── dom.js         # light-DOM helpers
     ├── json-model.js  # order-preserving JSON tree model
+    ├── page-model.js  # page tree model: nodes, nesting, validation
     ├── components/    # project-selector, import-modal, content-list,
     │                  # project-info, git-status, json-editor (tabs),
-    │                  # form-editor, dnd, config-editor, toast
+    │                  # form-editor, dnd, config-editor, toast,
+    │                  # pages-list, page-editor, page-canvas,
+    │                  # page-palette, page-inspector
     └── vendor/        # rich-editor.bundle.js (committed build output)
 ```
 
@@ -360,6 +379,8 @@ Layout: fixed-viewport flex — sidebar (collapsible, with a hover fly-out for t
 - Empty-project state with an import-project modal.
 - Project information (repo/branch/content dir, checkout status, publish action).
 - Content-file list (collapsible "Content" category in the sidebar; hover fly-out when the sidebar is collapsed; "+ Add" button).
+- Page-file list (collapsible "Pages" category in the sidebar, separate from Content; index.json protected from deletion; "+ Add" button; click opens the visual page editor).
+- Page editor (toolbar + component palette + canvas + inspector; completely separate from the JSON content editor).
 - JSON editor area (Form | JSON tabs).
 - Save action (dirty tracking, Cancel restores disk state).
 - Git status area (header summary + per-project status panel with refresh).
@@ -374,7 +395,7 @@ Errors are user-readable with technical detail kept for the log, shaped as `{"er
 
 ## 16. Out of scope
 
-Still postponed: content schemas and schema-driven validation, multi-select drag, keyboard-based drag alternatives, undo/redo history for form edits (Cancel restores from disk), full file explorer, image upload processing (format conversion, resizing), user authentication, multi-user access, remote/hosted SCM operation, FTP/SFTP publishing, deployment-provider plugins, automatic npm installs on the target site, automatic target-site builds, production packaging, public API authentication.
+Still postponed: content schemas and schema-driven validation, multi-select drag, keyboard-based drag alternatives, undo/redo history for form edits (Cancel restores from disk), full file explorer, image upload processing (format conversion, resizing), user authentication, multi-user access, remote/hosted SCM operation, FTP/SFTP publishing, deployment-provider plugins, automatic npm installs on the target site, automatic target-site builds, production packaging, public API authentication. For the page editor specifically: responsive breakpoint editing, forms, navigation builders, SEO/accessibility scoring, rich-text editing inside page components, arbitrary HTML components, framework-specific output.
 
 ## 17. Success criteria
 
@@ -392,6 +413,13 @@ The first version is successful when a user can:
 10. Save valid JSON; receive an error instead of saving invalid JSON; Cancel restores the on-disk state.
 11. View the target project's Git status and commit + push content changes.
 12. Keep the target website independently hostable as a static website.
+13. See a "Pages" sidebar list separate from Content, with index.json protected from deletion.
+14. Open the visual page editor and build pages from Box, Text, and Image components.
+15. Nest and reorder components with enforced HTML nesting rules.
+16. Edit component content, element types, and CSS properties through the inspector.
+17. Generate static HTML from page JSON and preview it.
+18. Import an existing HTML page into the page editor.
+19. Publish generated pages through the existing Git workflow.
 
 ## 18. Media management
 
@@ -455,3 +483,38 @@ The ProseMirror "insert image (upload)" button uploads into `media_dir` through 
 5. Rename rejects duplicates (409 surfaced inline); delete removes the file.
 6. The viewer opens on click, navigates with arrows/keys/swipe, closes with ×/Esc/down-swipe, and offers rename/copy link/delete.
 7. Closing the viewer after rename or delete refreshes the grid.
+
+## 19. Page editing
+
+SCM provides a visual page editor for building static HTML pages from structured components. The full specification lives in `spec_page_editor.md` — read it before adding features.
+
+### 19.1 Summary
+
+The page editor lets users build pages from Box, Text, and Image components, arrange them through drag and drop with enforced HTML nesting rules, edit content and CSS properties, assign reusable classes, and generate static HTML files for deployment.
+
+### 19.2 Storage
+
+Pages live in a `pages/` directory relative to the target project repository root (not configurable in v1). Both page JSON source files and generated HTML output are committed to the target repository.
+
+```text
+pages/index.json   →   index.html
+pages/contact.json →   pages/contact.html
+```
+
+### 19.3 Key rules
+
+- The sidebar has a **Pages** list separate from the generic **Content** list.
+- `index.json` is non-deletable and maps to the project root.
+- Page documents are structured JSON trees, not arbitrary HTML.
+- Nesting is enforced: a `div` cannot be dropped inside a `p`; a `span` can be inside a `p`.
+- The visual editor canvas renders nodes close to their generated output.
+- Generated HTML contains real content without requiring JavaScript.
+- The page editor and the JSON content editor are completely separate editors that share no code paths.
+
+### 19.4 Acceptance criteria
+
+See `spec_page_editor.md` §25 for the full list.
+
+### 19.5 Technology
+
+Backend: Rust, Tokio, Actix Web, no actors. HTML import uses `html5ever`. Frontend: vanilla JS, ES modules, no framework/bundler. The full technology stack is specified in `spec_page_editor.md` §5.
