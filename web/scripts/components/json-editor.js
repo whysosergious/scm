@@ -7,6 +7,7 @@ import * as model from '../json-model.js';
 import { el } from '../dom.js';
 import { patch, refreshGitStatus, selectedProject, state } from '../state.js';
 import { createFormEditor } from './form-editor.js';
+import { triggerAddFile } from './content-list.js';
 import { toast, toastError } from './toast.js';
 
 export function renderEditor(root) {
@@ -55,8 +56,7 @@ export function renderEditor(root) {
       );
     } else {
       const btn = el('button', { class: 'btn-primary' }, 'Create a JSON file');
-      btn.addEventListener('click', () =>
-        document.getElementById('add-file-btn').click());
+      btn.addEventListener('click', () => triggerAddFile());
       root.append(
         el(
           'div',

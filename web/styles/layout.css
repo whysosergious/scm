@@ -164,3 +164,152 @@
 .header-section {
   margin-bottom: 24px;
 }
+
+/* ================== Sidebar category + collapsed fly-out ================== */
+
+/* Toggle lives in the sidebar header, hugging the sidebar's inner edge. */
+.sidebar-header {
+  justify-content: space-between;
+  padding: 0 8px 0 16px;
+}
+.toggle-sidebar {
+  background: none;
+  border: none;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: var(--radius);
+}
+.toggle-sidebar:hover {
+  background-color: var(--color-surface-variant);
+  color: var(--color-primary);
+}
+.sidebar.collapsed .sidebar-header {
+  padding: 0;
+  justify-content: center;
+}
+.sidebar.collapsed .sidebar-header .logo {
+  display: none;
+}
+
+/* Collapsible "Content" category */
+.nav-category {
+  position: relative;
+}
+.nav-cat-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--color-on-surface-variant);
+  font-family: var(--font-label);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  border-radius: var(--radius);
+  margin-bottom: 4px;
+  transition: all 0.2s;
+}
+.nav-cat-header:hover {
+  background-color: var(--color-surface-variant);
+  color: var(--color-on-surface);
+}
+.nav-cat-header .material-symbols-outlined:first-child {
+  color: var(--color-primary);
+}
+.nav-cat-header > .material-symbols-outlined:last-of-type {
+  transition: transform 0.15s ease;
+}
+.nav-cat-header.closed > .material-symbols-outlined:last-of-type {
+  transform: rotate(-90deg);
+}
+.nav-file-list {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+}
+.nav-file-list .nav-item {
+  padding-left: 16px;
+}
+
+/* In-category add button */
+.nav-file-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 16px;
+  margin: 2px 0 4px;
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  border: 1px dashed var(--color-outline-variant);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: var(--font-label);
+  font-size: 11px;
+  transition: all 0.2s;
+}
+.nav-file-add:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background-color: rgba(37, 99, 235, 0.06);
+}
+
+/* Collapsed sidebar: only the category icon stays in the bar; the file list
+   appears as a fly-out to the side on hover. */
+.sidebar.collapsed .nav-category > .nav-file-list {
+  display: none;
+}
+/* Let the hover fly-out escape the sidebar; safe because collapsed mode
+   hides every wide child (labels, file list) via display:none. */
+.sidebar.collapsed {
+  overflow: visible;
+}
+.sidebar.collapsed .sidebar-nav {
+  overflow: visible;
+}
+/* Span the full bar so the fly-out's left:100% lands on the sidebar edge. */
+.sidebar.collapsed .nav-category {
+  margin: 0 -8px;
+  width: 60px;
+}
+.sidebar.collapsed .nav-cat-header {
+  justify-content: center;
+  padding: 8px 0;
+  gap: 0;
+}
+.sidebar.collapsed .nav-cat-header .cat-label,
+.sidebar.collapsed .nav-cat-header > .material-symbols-outlined:last-of-type {
+  display: none;
+}
+.cat-flyout {
+  display: none;
+}
+.sidebar.collapsed .nav-category:hover .cat-flyout {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  left: 100%;
+  top: 0;
+  min-width: 200px;
+  background-color: var(--color-surface-container);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 6px;
+  z-index: 90;
+}
+/* Fly-out content must ignore the collapsed-sidebar label hiding. */
+.sidebar.collapsed .cat-flyout .nav-item span:not(.material-symbols-outlined),
+.sidebar.collapsed .cat-flyout .nav-file-add span:not(.material-symbols-outlined) {
+  display: inline;
+}
+.sidebar.collapsed .cat-flyout .nav-item,
+.sidebar.collapsed .cat-flyout .nav-file-add {
+  padding-left: 12px;
+}

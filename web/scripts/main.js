@@ -2,7 +2,7 @@
 
 import { api } from './api.js';
 import { applySelectionRules, patch, refreshGitStatus, refreshFiles, refreshProjects, selectedProject, state, subscribe } from './state.js';
-import { renderContentNav, wireAddFileButton } from './components/content-list.js';
+import { renderContentNav } from './components/content-list.js';
 import { renderConfigEditor } from './components/config-editor.js';
 import { renderHeaderStatus } from './components/git-status.js';
 import { renderProjectInfo } from './components/project-info.js';
@@ -12,12 +12,13 @@ import { toast, toastError } from './components/toast.js';
 
 const $ = (id) => document.getElementById(id);
 
-// Sidebar toggle (kept from the original sketch).
+// Sidebar toggle: arrow points in the direction the sidebar will go.
 $('toggle-sidebar').addEventListener('click', () => {
-  $('sidebar').classList.toggle('collapsed');
+  const collapsed = $('sidebar').classList.toggle('collapsed');
+  const icon = document.querySelector('#toggle-sidebar .material-symbols-outlined');
+  if (icon) icon.textContent = collapsed ? 'chevron_right' : 'chevron_left';
+  $('toggle-sidebar').title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
 });
-
-wireAddFileButton($('add-file-btn'));
 
 // Settings nav toggles the config editor view.
 let settingsActive = false;
