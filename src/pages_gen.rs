@@ -83,15 +83,6 @@ pub fn generate_html(checkout: &Path, page_name: &str, doc: &Value) -> ScmResult
     // Validate basic structure
     validate_document(doc)?;
 
-    let title = doc
-        .get("title")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Untitled");
-    let description = doc
-        .get("meta")
-        .and_then(|m| m.get("description"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
     let root = doc.get("root").ok_or_else(|| {
         ScmError::invalid_json("Page document must have a 'root' node")
     })?;
@@ -150,29 +141,20 @@ pub fn generate_html(checkout: &Path, page_name: &str, doc: &Value) -> ScmResult
     // Build body HTML
     let body_html = render_node(root)?;
 
+    // Build head
+    let head_html = build_head_html(doc, &css);
+
     // Assemble full document
     let html = format!(
         r#"<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{title}</title>{desc_section}
-  <style>
-{css}</style>
-</head>
+{head_html}</head>
 <body>
 {body_html}
 </body>
 </html>
 "#,
-        title = escape_attr(title),
-        desc_section = if description.is_empty() {
-            String::new()
-        } else {
-            format!("\n  <meta name=\"description\" content=\"{}\">", escape_attr(description))
-        },
-        css = css,
+        head_html = head_html,
         body_html = body_html,
     );
 
@@ -213,6 +195,56 @@ fn validate_document(doc: &Value) -> ScmResult<()> {
         ScmError::invalid_json("Page document must have a 'root' node")
     })?;
     validate_node(root, &mut Vec::new())?;
+    validate_head_elements(doc)?;
+    Ok(())
+}
+
+fn validate_head_elements(doc: &Value) -> ScmResult<()> {
+    let head = match doc.get("head").and_then(|v| v.as_array()) {
+        Some(arr) => arr,
+        None => return Ok(()),
+    };
+    for (i, elem) in head.iter().enumerate() {
+        let elem_type = elem.get("type").and_then(|v| v.as_str()).ok_or_else(|| {
+            ScmError::invalid_json(format!("head element [{i}] must have a 'type'"))
+        })?;
+        match elem_type {
+            "stylesheet" => {
+                if elem.get("href").and_then(|v| v.as_str()).is_none() {
+                    return Err(ScmError::invalid_json(format!(
+                        "head element [{i}] type 'stylesheet' requires 'href'"
+                    )));
+                }
+            }
+            "meta" => {
+                let has_name = elem.get("name").and_then(|v| v.as_str()).is_some();
+                let has_property = elem.get("property").and_then(|v| v.as_str()).is_some();
+                let has_charset = elem.get("charset").and_then(|v| v.as_str()).is_some();
+                if !has_name && !has_property && !has_charset {
+                    return Err(ScmError::invalid_json(format!(
+                        "head element [{i}] type 'meta' requires at least one of 'name', 'property', or 'charset'"
+                    )));
+                }
+            }
+            "script" => {
+                let has_src = elem.get("src").and_then(|v| v.as_str()).is_some();
+                let has_js = elem.get("js").and_then(|v| v.as_str()).is_some();
+                if !has_src && !has_js {
+                    return Err(ScmError::invalid_json(format!(
+                        "head element [{i}] type 'script' requires at least one of 'src' or 'js'"
+                    )));
+                }
+            }
+            "style" => {
+                // css is optional — missing css produces empty <style></style>
+            }
+            other => {
+                return Err(ScmError::invalid_json(format!(
+                    "Unknown head element type '{other}' at index {i}"
+                )));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -293,6 +325,192 @@ fn validate_node(node: &Value, seen_ids: &mut Vec<String>) -> ScmResult<()> {
         }
     }
     Ok(())
+}
+
+fn render_head_element(elem: &Value) -> String {
+    let t = elem.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    match t {
+        "stylesheet" => {
+            let href = elem.get("href").and_then(|v| v.as_str()).unwrap_or("");
+            let media_attr = elem
+                .get("media")
+                .and_then(|v| v.as_str())
+                .map(|m| format!(" media=\"{}\"", escape_attr(m)))
+                .unwrap_or_default();
+            format!("<link rel=\"stylesheet\" href=\"{}\"{}>", escape_attr(href), media_attr)
+        }
+        "style" => {
+            let css = elem.get("css").and_then(|v| v.as_str()).unwrap_or("");
+            format!("<style>{css}</style>")
+        }
+        "meta" => {
+            if let Some(charset) = elem.get("charset").and_then(|v| v.as_str()) {
+                format!("<meta charset=\"{}\">", escape_attr(charset))
+            } else if let Some(name) = elem.get("name").and_then(|v| v.as_str()) {
+                let content = elem.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                format!(
+                    "<meta name=\"{}\" content=\"{}\">",
+                    escape_attr(name),
+                    escape_attr(content)
+                )
+            } else if let Some(property) = elem.get("property").and_then(|v| v.as_str()) {
+                let content = elem.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                format!(
+                    "<meta property=\"{}\" content=\"{}\">",
+                    escape_attr(property),
+                    escape_attr(content)
+                )
+            } else {
+                String::new()
+            }
+        }
+        "script" => {
+            if let Some(src) = elem.get("src").and_then(|v| v.as_str()) {
+                let mut attrs = format!(" src=\"{}\"", escape_attr(src));
+                if elem.get("defer").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    attrs.push_str(" defer");
+                }
+                if elem.get("async").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    attrs.push_str(" async");
+                }
+                format!("<script{attrs}></script>")
+            } else {
+                let js = elem.get("js").and_then(|v| v.as_str()).unwrap_or("");
+                format!("<script>{js}</script>")
+            }
+        }
+        _ => String::new(),
+    }
+}
+
+fn build_head_html(doc: &Value, css: &str) -> String {
+    let title = doc
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Untitled");
+    let description = doc
+        .get("meta")
+        .and_then(|m| m.get("description"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let og_image = doc
+        .get("meta")
+        .and_then(|m| m.get("og_image"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let head_elements = doc
+        .get("head")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    // Categorize head elements
+    let mut other_meta = Vec::new();
+    let mut stylesheets = Vec::new();
+    let mut styles = Vec::new();
+    let mut defer_scripts = Vec::new();
+    let mut blocking_scripts = Vec::new();
+
+    for elem in &head_elements {
+        let t = elem.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        match t {
+            "meta" => {
+                // Deduplication: skip head meta entries that duplicate legacy meta object
+                if let Some(name) = elem.get("name").and_then(|v| v.as_str()) {
+                    if name == "description" && !description.is_empty() {
+                        continue;
+                    }
+                }
+                if let Some(property) = elem.get("property").and_then(|v| v.as_str()) {
+                    if property == "og:image" && !og_image.is_empty() {
+                        continue;
+                    }
+                }
+                other_meta.push(render_head_element(elem));
+            }
+            "stylesheet" => stylesheets.push(render_head_element(elem)),
+            "style" => styles.push(render_head_element(elem)),
+            "script" => {
+                let is_defer_async = elem
+                    .get("defer")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                    || elem
+                        .get("async")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                if is_defer_async {
+                    defer_scripts.push(render_head_element(elem));
+                } else {
+                    blocking_scripts.push(render_head_element(elem));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Build head in spec order
+    let mut head = String::from("<head>\n");
+
+    // 1. charset (always first)
+    head.push_str("  <meta charset=\"utf-8\">\n");
+
+    // 2. viewport (always present)
+    head.push_str("  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n");
+
+    // 3. other meta (deduplicated with legacy meta object)
+    for m in &other_meta {
+        head.push_str(&format!("  {m}\n"));
+    }
+
+    // Legacy description meta (if not already in head)
+    if !description.is_empty() && !other_meta.iter().any(|m| m.contains("name=\"description\"")) {
+        head.push_str(&format!(
+            "  <meta name=\"description\" content=\"{}\">\n",
+            escape_attr(description)
+        ));
+    }
+
+    // Legacy og:image meta (if not already in head)
+    if !og_image.is_empty() && !other_meta.iter().any(|m| m.contains("property=\"og:image\"")) {
+        head.push_str(&format!(
+            "  <meta property=\"og:image\" content=\"{}\">\n",
+            escape_attr(og_image)
+        ));
+    }
+
+    // 4. title (always present)
+    head.push_str(&format!("  <title>{}</title>\n", escape_attr(title)));
+
+    // 5. stylesheets
+    for s in &stylesheets {
+        head.push_str(&format!("  {s}\n"));
+    }
+
+    // 6. styles
+    for s in &styles {
+        head.push_str(&format!("  {s}\n"));
+    }
+
+    // 7. generated CSS
+    if !css.is_empty() {
+        head.push_str("  <style>\n");
+        head.push_str(css);
+        head.push_str("  </style>\n");
+    }
+
+    // 8. defer/async scripts
+    for s in &defer_scripts {
+        head.push_str(&format!("  {s}\n"));
+    }
+
+    // 9. blocking scripts
+    for s in &blocking_scripts {
+        head.push_str(&format!("  {s}\n"));
+    }
+
+    head
 }
 
 fn render_node(node: &Value) -> ScmResult<String> {
@@ -518,5 +736,222 @@ mod tests {
     #[test]
     fn escape_attr_works() {
         assert_eq!(escape_attr(r#"a "b" c&#x27;d"#), "a &quot;b&quot; c&amp;#x27;d");
+    }
+
+    #[test]
+    fn head_elements_generated_in_order() {
+        let doc = json!({
+            "version": 1,
+            "title": "Test Page",
+            "meta": { "description": "A test", "og_image": "" },
+            "head": [
+                { "type": "meta", "name": "author", "content": "Jane" },
+                { "type": "stylesheet", "href": "/css/main.css" },
+                { "type": "stylesheet", "href": "/css/print.css", "media": "print" },
+                { "type": "style", "css": ".hero { padding: 4rem; }" },
+                { "type": "meta", "property": "og:title", "content": "Home" },
+                { "type": "script", "src": "/js/app.js", "defer": true },
+                { "type": "script", "src": "/js/counter.js", "async": true },
+                { "type": "script", "js": "console.log('init');" },
+                { "type": "meta", "charset": "utf-8" }
+            ],
+            "classes": [],
+            "root": {
+                "id": "root",
+                "type": "box",
+                "props": { "element": "main" },
+                "styles": {},
+                "classes": [],
+                "children": []
+            }
+        });
+        validate_document(&doc).unwrap();
+
+        let css = "";
+        let head = build_head_html(&doc, css);
+
+        // charset meta is always first (after <head>)
+        let after_head = head.strip_prefix("<head>\n").unwrap();
+        assert!(after_head.starts_with("  <meta charset=\"utf-8\">"), "charset must be first, got: {after_head}");
+
+        // viewport is second
+        let lines: Vec<&str> = after_head.lines().collect();
+        assert_eq!(lines[1], "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
+
+        // other meta after viewport (deduplicated: author, og:title, description from legacy meta)
+        let joined = after_head.to_string();
+        assert!(joined.contains("  <meta name=\"author\" content=\"Jane\">"));
+        assert!(joined.contains("  <meta property=\"og:title\" content=\"Home\">"));
+        assert!(joined.contains("  <meta name=\"description\" content=\"A test\">"));
+
+        // title
+        assert!(joined.contains("  <title>Test Page</title>"));
+
+        // stylesheets
+        assert!(joined.contains("  <link rel=\"stylesheet\" href=\"/css/main.css\">"));
+        assert!(joined.contains("  <link rel=\"stylesheet\" href=\"/css/print.css\" media=\"print\">"));
+
+        // style
+        assert!(joined.contains("  <style>.hero { padding: 4rem; }</style>"));
+
+        // defer/async scripts come before blocking
+        let defer_pos = joined.find("defer").unwrap();
+        let blocking_pos = joined.find("console.log").unwrap();
+        assert!(defer_pos < blocking_pos, "defer script must come before blocking script");
+
+        // blocking script is last element before </head>
+        assert!(joined.trim_end().ends_with("  <script>console.log('init');</script>"));
+    }
+
+    #[test]
+    fn head_deduplication_with_legacy_meta() {
+        let doc = json!({
+            "version": 1,
+            "title": "T",
+            "meta": { "description": "legacy desc", "og_image": "legacy.png" },
+            "head": [
+                { "type": "meta", "name": "description", "content": "head desc" },
+                { "type": "meta", "property": "og:image", "content": "head.png" }
+            ],
+            "classes": [],
+            "root": {
+                "id": "root",
+                "type": "box",
+                "props": { "element": "div" },
+                "styles": {},
+                "classes": [],
+                "children": []
+            }
+        });
+        validate_document(&doc).unwrap();
+        let head = build_head_html(&doc, "");
+
+        // Legacy meta takes precedence — head duplicates are skipped
+        assert!(head.contains("content=\"legacy desc\""), "should use legacy description");
+        assert!(!head.contains("content=\"head desc\""), "should skip head description");
+        assert!(head.contains("content=\"legacy.png\""), "should use legacy og_image");
+        assert!(!head.contains("content=\"head.png\""), "should skip head og:image");
+    }
+
+    #[test]
+    fn head_deduplication_skipped_when_legacy_empty() {
+        let doc = json!({
+            "version": 1,
+            "title": "T",
+            "meta": { "description": "", "og_image": "" },
+            "head": [
+                { "type": "meta", "name": "description", "content": "from head" },
+                { "type": "meta", "property": "og:image", "content": "head_og.png" }
+            ],
+            "classes": [],
+            "root": {
+                "id": "root",
+                "type": "box",
+                "props": { "element": "div" },
+                "styles": {},
+                "classes": [],
+                "children": []
+            }
+        });
+        validate_document(&doc).unwrap();
+        let head = build_head_html(&doc, "");
+
+        // Legacy empty → head entries are NOT deduplicated
+        assert!(head.contains("content=\"from head\""));
+        assert!(head.contains("content=\"head_og.png\""));
+    }
+
+    #[test]
+    fn head_elements_escapes_attributes() {
+        let doc = json!({
+            "version": 1,
+            "title": "T",
+            "meta": { "description": "", "og_image": "" },
+            "head": [
+                { "type": "stylesheet", "href": "/css?a=1&b=2" },
+                { "type": "meta", "name": "author", "content": "O'Brien & Co" },
+                { "type": "meta", "charset": "utf-8" }
+            ],
+            "classes": [],
+            "root": {
+                "id": "root",
+                "type": "box",
+                "props": { "element": "div" },
+                "styles": {},
+                "classes": [],
+                "children": []
+            }
+        });
+        validate_document(&doc).unwrap();
+        let head = build_head_html(&doc, "");
+
+        assert!(head.contains("href=\"/css?a=1&amp;b=2\""));
+        assert!(head.contains("content=\"O'Brien &amp; Co\""));
+    }
+
+    #[test]
+    fn validate_head_stylesheet_requires_href() {
+        let doc = json!({
+            "version": 1,
+            "title": "T",
+            "meta": { "description": "", "og_image": "" },
+            "head": [
+                { "type": "stylesheet" }
+            ],
+            "classes": [],
+            "root": {
+                "id": "root",
+                "type": "box",
+                "props": { "element": "div" },
+                "styles": {},
+                "classes": [],
+                "children": []
+            }
+        });
+        assert!(validate_document(&doc).is_err());
+    }
+
+    #[test]
+    fn validate_head_meta_requires_identifier() {
+        let doc = json!({
+            "version": 1,
+            "title": "T",
+            "meta": { "description": "", "og_image": "" },
+            "head": [
+                { "type": "meta", "content": "val" }
+            ],
+            "classes": [],
+            "root": {
+                "id": "root",
+                "type": "box",
+                "props": { "element": "div" },
+                "styles": {},
+                "classes": [],
+                "children": []
+            }
+        });
+        assert!(validate_document(&doc).is_err());
+    }
+
+    #[test]
+    fn validate_head_script_requires_src_or_js() {
+        let doc = json!({
+            "version": 1,
+            "title": "T",
+            "meta": { "description": "", "og_image": "" },
+            "head": [
+                { "type": "script", "defer": true }
+            ],
+            "classes": [],
+            "root": {
+                "id": "root",
+                "type": "box",
+                "props": { "element": "div" },
+                "styles": {},
+                "classes": [],
+                "children": []
+            }
+        });
+        assert!(validate_document(&doc).is_err());
     }
 }

@@ -1,6 +1,6 @@
-// Page editor container (spec_page_editor.md §§11–12).
-// Toolbar + three-column layout: palette | canvas | inspector.
-// Manages page load/save flow and dirty state.
+// Page editor container (spec_page_editor.md §§11, 9a).
+// Toolbar + four-column layout: palette | tree | canvas | inspector.
+// Manages page load/save flow, head element selection, and dirty state.
 
 import { api } from '../api.js';
 import * as pm from '../page-model.js';
@@ -8,7 +8,8 @@ import { el, icon } from '../dom.js';
 import { patch, refreshGitStatus, refreshPages, selectedProject, state } from '../state.js';
 import { renderPalette } from './page-palette.js';
 import { renderCanvas, setupCanvasDragDrop, setProjectId } from './page-canvas.js';
-import { renderInspector } from './page-inspector.js';
+import { renderInspector, renderHeadInspector } from './page-inspector.js';
+import { renderTree } from './page-tree.js';
 import { renderBoxModel, clearBoxModel } from './page-boxmodel.js';
 import { toast, toastError } from './toast.js';
 
@@ -118,8 +119,8 @@ function renderNoPage(root, project) {
 }
 
 /**
- * Renders the full page editor: toolbar, three-column layout (palette|canvas|inspector),
- * manages load/save flow and dirty state.
+ * Renders the full page editor: toolbar, four-column layout (palette|tree|canvas|inspector),
+ * manages load/save flow, head element selection, and dirty state.
  * @param {HTMLElement} root - Container element.
  * @param {Object} project - Project configuration object.
  * @returns {void}
@@ -130,6 +131,7 @@ function renderEditor(root, project) {
   let doc = null;
   let dirty = false;
   let selectedNodeId = null;
+  let selectedHeadIndex = null;
 
   // Layout
   const wrap = el('div', { class: 'page-editor-wrap' });
@@ -152,12 +154,13 @@ function renderEditor(root, project) {
     ),
   );
 
-  // Three-column layout
+  // Four-column layout: palette | tree | canvas | inspector
   const paletteEl = el('div', { class: 'page-palette' });
+  const treeEl = el('div', { class: 'page-tree' });
   const canvasEl = el('div', { class: 'page-canvas' });
   const inspectorEl = el('div', { class: 'page-inspector' });
 
-  const columns = el('div', { class: 'page-columns' }, paletteEl, canvasEl, inspectorEl);
+  const columns = el('div', { class: 'page-columns' }, paletteEl, treeEl, canvasEl, inspectorEl);
 
   wrap.append(toolbar, columns);
   root.append(wrap);
@@ -166,12 +169,97 @@ function renderEditor(root, project) {
   setProjectId(project.id);
   setupCanvasDragDrop(canvasEl, () => doc, selectNode, onAddNode);
 
+  // ================== ZOOM + VIEWPORT RESIZE ==================
+
+  const ZOOM_LEVELS = [25, 50, 75, 100, 125, 150, 200, 300];
+  let zoomLevel = 100;
+
+  function applyZoom() {
+    const zoomWrap = canvasEl.querySelector('.canvas-zoom-wrap');
+    const zoomPct = canvasEl.querySelector('.canvas-zoom-pct');
+    if (zoomWrap) zoomWrap.style.transform = `scale(${zoomLevel / 100})`;
+    if (zoomPct) zoomPct.textContent = `${zoomLevel}%`;
+  }
+
+  function setZoom(level) {
+    zoomLevel = Math.max(25, Math.min(300, level));
+    applyZoom();
+  }
+
+  // Wire zoom bar buttons after first renderCanvas call
+  requestAnimationFrame(() => {
+    const zoomBar = canvasEl._zoomBar;
+    const handle = canvasEl._resizeHandle;
+    const widthLabel = canvasEl._widthLabel;
+    const viewport = canvasEl._viewport;
+
+    if (zoomBar) {
+      const buttons = zoomBar.querySelectorAll('button');
+      // buttons: [out, pct(is span), in, fit]
+      buttons[0].addEventListener('click', () => {
+        const idx = ZOOM_LEVELS.findIndex((z) => z >= zoomLevel);
+        setZoom(idx > 0 ? ZOOM_LEVELS[idx - 1] : zoomLevel - 25);
+      });
+      buttons[2].addEventListener('click', () => {
+        const idx = ZOOM_LEVELS.findIndex((z) => z > zoomLevel);
+        setZoom(idx >= 0 ? ZOOM_LEVELS[idx] : zoomLevel + 25);
+      });
+      buttons[3].addEventListener('click', () => {
+        // Fit to available width
+        const scroll = canvasEl.querySelector('.canvas-viewport-scroll');
+        if (scroll && viewport) {
+          const available = scroll.clientWidth - 48; // padding
+          const pageW = viewport.scrollWidth || 1200;
+          setZoom(Math.round((available / pageW) * 100));
+        }
+      });
+    }
+
+    // Ctrl+scroll zoom on canvas
+    canvasEl.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -10 : 10;
+      setZoom(zoomLevel + delta);
+    }, { passive: false });
+
+    // Viewport resize handle
+    if (handle && viewport) {
+      let startX = 0;
+      let startW = 0;
+
+      handle.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        startX = e.clientX;
+        startW = viewport.offsetWidth;
+        handle.classList.add('dragging');
+        document.body.style.cursor = 'ew-resize';
+        document.body.style.userSelect = 'none';
+
+        function onMove(ev) {
+          const dx = ev.clientX - startX;
+          const newW = Math.max(200, Math.min(startW + dx, 2400));
+          viewport.style.width = `${newW}px`;
+          if (widthLabel) widthLabel.textContent = `${Math.round(newW)}px`;
+        }
+
+        function onUp() {
+          handle.classList.remove('dragging');
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+        }
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+      });
+    }
+
+    applyZoom();
+  });
+
   // State
-  /**
-   * Marks the document as dirty or clean and updates the save button and indicator.
-   * @param {boolean} v - Whether the document has unsaved changes.
-   * @returns {void}
-   */
   function markDirty(v) {
     dirty = v;
     saveBtn.disabled = !v;
@@ -179,10 +267,6 @@ function renderEditor(root, project) {
     dirtyIndicator.textContent = v ? '(unsaved changes)' : '';
   }
 
-  /**
-   * Clears and re-renders the box model control for the current selection.
-   * @returns {void}
-   */
   function renderBoxModelNow() {
     clearBoxModel(canvasEl);
     if (selectedNodeId) {
@@ -191,14 +275,32 @@ function renderEditor(root, project) {
     }
   }
 
-  /**
-   * Selects a node by ID: updates the inspector, canvas selection highlight, and box model.
-   * @param {string} id - The node ID to select.
-   * @returns {void}
-   */
+  /** Re-render the tree panel (head + body sections). */
+  function refreshTree() {
+    if (!doc) return;
+    renderTree(treeEl, doc, selectedNodeId, selectedHeadIndex, {
+      onSelectNode: selectNode,
+      onSelectHead: selectHead,
+      onAddHead,
+      onRemoveHead,
+    });
+  }
+
+  /** Re-render the inspector for the current selection (node or head). */
+  function refreshInspector() {
+    if (selectedHeadIndex !== null) {
+      renderHeadInspector(inspectorEl, doc, selectedHeadIndex, onNodeChange, () => onRemoveHead(selectedHeadIndex));
+    } else {
+      renderInspector(inspectorEl, doc, selectedNodeId, onNodeChange);
+    }
+  }
+
+  /** Select a body tree node. Clears head selection. */
   function selectNode(id) {
     selectedNodeId = id;
-    renderInspector(inspectorEl, doc, id, onNodeChange);
+    selectedHeadIndex = null;
+    refreshInspector();
+    refreshTree();
     // Update canvas selection
     canvasEl.querySelectorAll('.canvas-page-node').forEach((n) => {
       n.classList.toggle('selected', n.dataset.nodeId === id);
@@ -215,13 +317,20 @@ function renderEditor(root, project) {
     }
   }
 
-  /**
-   * Handles any node property change: marks dirty, re-renders canvas and box model.
-   * @returns {void}
-   */
+  /** Select a head element. Clears body node selection. */
+  function selectHead(index) {
+    selectedHeadIndex = index;
+    selectedNodeId = null;
+    refreshInspector();
+    refreshTree();
+    clearBoxModel(canvasEl);
+  }
+
+  /** Handle any property change: mark dirty, re-render canvas, tree, box model. */
   function onNodeChange() {
     markDirty(true);
     renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+    refreshTree();
     if (selectedNodeId) {
       requestAnimationFrame(() => {
         const node = pm.findNode(doc.root, selectedNodeId);
@@ -230,19 +339,14 @@ function renderEditor(root, project) {
     }
   }
 
-  /**
-   * Handles node drop (reorder/move): moves the node in the tree and re-renders.
-   * @param {string} nodeId - ID of the node being moved.
-   * @param {string} targetParentId - ID of the target parent node.
-   * @param {number} index - Insertion index in the target parent's children.
-   * @returns {void}
-   */
+  /** Handle node drop (reorder/move). */
   function onDrop(nodeId, targetParentId, index) {
     const changed = pm.moveNode(doc.root, nodeId, targetParentId, index);
     if (changed) {
       markDirty(true);
       clearBoxModel(canvasEl);
       renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+      refreshTree();
       if (selectedNodeId) {
         requestAnimationFrame(() => {
           const node = pm.findNode(doc.root, selectedNodeId);
@@ -252,21 +356,38 @@ function renderEditor(root, project) {
     }
   }
 
-  /**
-   * Handles adding a new node: inserts into the tree, marks dirty, selects the new node.
-   * @param {string} parentId - ID of the parent node to add to.
-   * @param {number} index - Insertion index in the parent's children.
-   * @param {string} type - Component type ('box'|'text'|'image').
-   * @returns {void}
-   */
+  /** Handle adding a new body node. */
   function onAddNode(parentId, index, type) {
     const node = pm.addNode(doc.root, parentId, type, index);
     if (node) {
       markDirty(true);
       clearBoxModel(canvasEl);
       renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+      refreshTree();
       requestAnimationFrame(() => selectNode(node.id));
     }
+  }
+
+  /** Add a new head element to the document. */
+  function onAddHead(type) {
+    if (!doc) return;
+    pm.addHeadElement(doc, type);
+    markDirty(true);
+    refreshTree();
+    selectHead(doc.head.length - 1);
+  }
+
+  /** Remove a head element at the given index. */
+  function onRemoveHead(index) {
+    if (!doc) return;
+    if (selectedHeadIndex === index) selectedHeadIndex = null;
+    pm.removeHeadElement(doc, index);
+    if (selectedHeadIndex !== null && selectedHeadIndex >= doc.head.length) {
+      selectedHeadIndex = doc.head.length > 0 ? doc.head.length - 1 : null;
+    }
+    markDirty(true);
+    refreshTree();
+    refreshInspector();
   }
 
   // Actions
@@ -306,7 +427,7 @@ function renderEditor(root, project) {
     onAddNode(doc.root.id, doc.root.children.length, type);
   });
 
-  // Re-render box model when canvas resizes (layout reflow changes element positions)
+  // Re-render box model when canvas resizes
   const resizeObs = new ResizeObserver(() => {
     if (selectedNodeId) {
       requestAnimationFrame(renderBoxModelNow);
@@ -316,10 +437,6 @@ function renderEditor(root, project) {
 
   // Load page
   loadPage();
-  /**
-   * Loads the page content from the API, parses it, validates, and renders.
-   * @returns {Promise<void>}
-   */
   async function loadPage() {
     try {
       const data = await api.loadPage(project.id, name);
@@ -331,7 +448,8 @@ function renderEditor(root, project) {
         toast(`Page has issues: ${validation.errors[0]}`, 'warn');
       }
       renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
-      renderInspector(inspectorEl, doc, selectedNodeId, onNodeChange);
+      refreshTree();
+      refreshInspector();
     } catch (err) {
       toastError(err);
     }

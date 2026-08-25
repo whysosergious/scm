@@ -238,6 +238,14 @@ Initial page structure:
     "description": "",
     "og_image": ""
   },
+  "head": [
+    { "type": "stylesheet", "href": "/css/main.css" },
+    { "type": "style", "css": ".hero { padding: 4rem; }" },
+    { "type": "meta", "name": "author", "content": "Jane" },
+    { "type": "meta", "property": "og:title", "content": "Home" },
+    { "type": "script", "src": "/js/app.js", "defer": true },
+    { "type": "script", "js": "console.log('init');" }
+  ],
   "classes": [],
   "root": {
     "id": "root",
@@ -251,6 +259,8 @@ Initial page structure:
   }
 }
 ```
+
+The `meta` object is kept for backward compatibility. It always generates `<meta name="description">` and an `og:image` tag. Additional or custom meta fields should use the `head` array (§9a).
 
 A page node contains:
 
@@ -407,21 +417,122 @@ When a node is moved into a new parent, its element may need to change to remain
 
 The editor does not silently reassign elements. If a move would produce invalid nesting, it is rejected entirely.
 
+## 10a. Head elements
+
+The page document supports an optional `head` array for elements that belong in the HTML `<head>`.
+
+Each head element has a `type` field and type-specific properties. The `head` array preserves insertion order — elements are emitted in the same order during generation.
+
+### Head element types
+
+#### stylesheet
+
+A `<link rel="stylesheet">` tag.
+
+```json
+{ "type": "stylesheet", "href": "/css/main.css", "media": "screen" }
+```
+
+| Property | Required | Description |
+|---|---|---|
+| `href` | yes | Website-relative or absolute URL to the stylesheet |
+| `media` | no | Media query (e.g. `"screen"`, `"print"`, `"(max-width: 768px)"`) |
+
+Generated HTML: `<link rel="stylesheet" href="..." media="...">`
+
+#### style
+
+An inline `<style>` block.
+
+```json
+{ "type": "style", "css": ".hero { padding: 4rem; }" }
+```
+
+| Property | Required | Description |
+|---|---|---|
+| `css` | yes | Raw CSS text (emitted verbatim inside `<style>` tags) |
+
+Generated HTML: `<style>...</style>`
+
+#### meta
+
+A `<meta>` tag. Supports `name`/`content`, `property`/`content`, or `charset` variants.
+
+```json
+{ "type": "meta", "name": "author", "content": "Jane" }
+{ "type": "meta", "property": "og:title", "content": "Home" }
+{ "type": "meta", "charset": "utf-8" }
+```
+
+| Property | Required | Description |
+|---|---|---|
+| `name` | no* | Meta name (e.g. `"author"`, `"robots"`, `"viewport"`) |
+| `property` | no* | Open Graph property (e.g. `"og:title"`, `"og:description"`) |
+| `charset` | no* | Character set declaration (typically `"utf-8"`) |
+| `content` | yes* | Meta content value (*not required when `charset` is set) |
+
+At least one of `name`, `property`, or `charset` must be present.
+
+Generated HTML: `<meta name="..." content="...">` or `<meta property="..." content="...">` or `<meta charset="...">`
+
+**Note:** The existing `meta.description` and `meta.og_image` fields in the document root are preserved for backward compatibility. They generate `<meta name="description">` and `<meta property="og:image">` respectively. Users may also add these through the `head` array — the generator deduplicates by skipping `description`/`og:image` meta entries in `head` when the same field exists in `meta`.
+
+#### script
+
+A `<script>` tag (external or inline).
+
+```json
+{ "type": "script", "src": "/js/app.js", "defer": true }
+{ "type": "script", "js": "console.log('init');" }
+```
+
+| Property | Required | Description |
+|---|---|---|
+| `src` | no* | Website-relative or absolute URL to an external script |
+| `js` | no* | Inline JavaScript text |
+| `defer` | no | Boolean — adds `defer` attribute (external scripts only) |
+| `async` | no | Boolean — adds `async` attribute (external scripts only) |
+
+At least one of `src` or `js` must be present. `defer` and `async` are ignored when `js` is set.
+
+Generated HTML: `<script src="..." defer></script>` or `<script>...</script>`
+
+### Head element ordering
+
+The recommended order for head elements is:
+
+1. `meta` (charset first, then other meta)
+2. `stylesheet` (linked CSS)
+3. `style` (inline CSS)
+4. `script` with `defer` or `async`
+5. `script` without defer/async (blocking)
+
+The editor does not enforce ordering — the user controls the exact position of each element in the `head` array.
+
+### Backward compatibility
+
+When loading an existing page document that has no `head` array, the editor treats it as an empty array. The existing `meta` object fields (`description`, `og_image`) continue to work and generate their corresponding `<meta>` tags. Once a user adds a `description` or `og:image` entry through the `head` array, the generator uses the `head` version and skips the `meta` object equivalent.
+
 ## 11. Visual editor
 
-The initial editor should have three primary areas:
+The initial editor should have four primary areas:
 
 ```text
-┌─────────────────────────────────────────────┐
-│ Toolbar                                     │
-├──────────────┬────────────────┬─────────────┤
-│ Components   │ Canvas         │ Inspector    │
-│ palette      │                │              │
-│              │                │              │
-│ Box          │                │ selected     │
-│ Text         │                │ component    │
-│ Image        │                │ properties   │
-└──────────────┴────────────────┴─────────────┘
+┌──────────────────────────────────────────────────────────┐
+│ Toolbar                                                  │
+├──────────────┬───────────┬────────────────┬──────────────┤
+│ Components   │ DOM Tree  │ Canvas         │ Inspector    │
+│ palette      │           │                │              │
+│              │ <head>    │                │ selected     │
+│ Box          │  meta     │                │ element      │
+│ Text         │  style    │                │ properties   │
+│ Image        │  script   │                │              │
+│              │           │                │              │
+│              │ <body>    │                │              │
+│              │  main     │                │              │
+│              │   ├ div   │                │              │
+│              │   └ p     │                │              │
+└──────────────┴───────────┴────────────────┴──────────────┘
 ```
 
 ### Toolbar
@@ -448,6 +559,41 @@ A component should be addable by:
 
 Drag and drop is the preferred initial interaction, but the editor must not depend exclusively on drag and drop.
 
+### DOM tree panel
+
+The DOM tree panel sits between the component palette and the canvas. It shows the full document structure as a hierarchical tree with two sections:
+
+#### Head section
+
+The head section lists all elements in the `head` array (§9a). Each entry shows:
+
+- An icon by type: link (stylesheet), paintbrush (style), tag (meta), code (script).
+- A short label: the href/src, the first 30 chars of CSS/JS, or the name/property of a meta tag.
+- Selection highlight when clicked.
+- A delete button on hover.
+
+Head elements are not draggable between themselves in the initial version. Order is managed through add (appends to end) and delete only.
+
+An "+ Add" button at the bottom of the head section opens a dropdown menu to add a new head element (stylesheet, style, meta, script).
+
+#### Body section
+
+The body section renders the page tree recursively. Each node shows:
+
+- An expand/collapse chevron (if it has children).
+- A type badge: `box`, `text`, or `img`.
+- The element name and a short content preview (e.g. `div`, `p: "Hello world"`, `img: logo.png`).
+- Selection highlight when clicked.
+
+Clicking a body node selects it on the canvas and in the inspector.
+
+#### Interaction with canvas
+
+- Clicking a node in the tree selects it in the canvas and inspector.
+- Selecting a node on the canvas highlights it in the tree and scrolls it into view.
+- The tree auto-expands to show the selected node when it is inside a collapsed parent.
+- Keyboard navigation: arrow keys move between visible tree items, Enter selects, Delete removes.
+
 ### Canvas
 
 The canvas must support:
@@ -468,17 +614,46 @@ The canvas is an editing representation. It should render nodes as close to thei
 
 ### Inspector
 
-The inspector displays properties for the selected component.
+The inspector displays properties for the selected component. It handles two kinds of selection:
 
-It must update when selection changes.
+#### Node inspector (body tree nodes)
 
-The initial inspector supports:
+When a body tree node is selected, the inspector shows:
 
-- Component-specific properties.
-- Basic CSS properties.
-- Component ID.
+- Component type label and ID.
+- Box: element dropdown (`div`/`section`/`header`/`main`/`footer`/`article`/`aside`).
+- Text: element dropdown (`p`/`h1`/`h2`/`h3`/`span`/`blockquote`) + content textarea.
+- Image: `src` field + media picker button + `alt` input.
+- CSS property inputs (extensible definition list).
 - Assigned reusable classes.
 - Delete action.
+
+#### Head element inspector
+
+When a head element is selected, the inspector shows type-specific fields:
+
+**stylesheet:**
+- `href` input (text field for URL).
+- `media` input (text field, optional).
+
+**style:**
+- `css` textarea (multi-line text field, monospace font). Future versions will use CodeMirror; the initial version uses a plain textarea.
+
+**meta:**
+- `name` input (text field, shown when `property` and `charset` are empty).
+- `property` input (text field, shown when `name` and `charset` are empty).
+- `charset` input (text field, shown when `name` and `property` are empty).
+- `content` input (text field, hidden when `charset` is set).
+
+**script:**
+- `src` input (text field for URL, shown when `js` is empty).
+- `js` textarea (multi-line text field, monospace font, shown when `src` is empty).
+- `defer` toggle (checkbox, shown when `src` is set).
+- `async` toggle (checkbox, shown when `src` is set).
+
+The inspector must update when selection changes.
+
+All inspector fields must update the document model live (on input/change) and mark the page as dirty.
 
 ## 12. Drag and drop
 
@@ -610,7 +785,8 @@ The generated document must contain:
 - Responsive viewport metadata.
 - Page title.
 - Meta description when provided.
-- Generated CSS.
+- Head elements from the `head` array (§9a).
+- Generated CSS (reusable classes + inline node styles).
 - `body`.
 - Recursively rendered component HTML.
 
@@ -629,6 +805,39 @@ The generator must:
 - Preserve selected semantic elements.
 - Generate image `alt` attributes.
 - Avoid local filesystem paths.
+- Generate head elements from the `head` array in order.
+
+### Head element generation
+
+Each head element is emitted as follows:
+
+| Type | Generated HTML |
+|---|---|
+| `stylesheet` | `<link rel="stylesheet" href="{href}"{media}>` |
+| `style` | `<style>{css}</style>` |
+| `meta` (name) | `<meta name="{name}" content="{content}">` |
+| `meta` (property) | `<meta property="{property}" content="{content}">` |
+| `meta` (charset) | `<meta charset="{charset}">` |
+| `script` (src) | `<script src="{src}"{defer}{async}></script>` |
+| `script` (js) | `<script>{js}</script>` |
+
+The `<head>` element order in the generated HTML is:
+
+1. `<meta charset>` (always first).
+2. `<meta name="viewport">` (always present).
+3. Other `<meta>` entries from `head` and the legacy `meta` object (deduplicated: if `meta.description` is set, skip `head` entries with `name="description"`; same for `meta.og_image` and `property="og:image"`).
+4. `<title>` (always present).
+5. `<link rel="stylesheet">` entries from `head`.
+6. `<style>` entries from `head`.
+7. Generated CSS (reusable classes + inline node styles).
+8. `<script>` entries with `defer` or `async`.
+9. `<script>` entries without defer/async (blocking, last).
+
+Escaping rules for head elements:
+
+- `href`, `src`, `media`, `name`, `property`, `content`: HTML-attribute-escaped.
+- `css`: emitted verbatim inside `<style>` tags (the user is trusted to write valid CSS).
+- `js`: emitted verbatim inside `<script>` tags (the user is trusted to write valid JavaScript).
 
 The generator must report or reject:
 
@@ -639,6 +848,7 @@ The generator must report or reject:
 - Unsafe image paths.
 - Invalid page structure.
 - Unsupported semantic elements.
+- Head elements with missing required properties (e.g. stylesheet without `href`, script without `src` or `js`).
 
 ## 17. Generated output mapping
 
@@ -895,6 +1105,31 @@ Page documents and generated files must be written atomically.
 - Update publish pathspecs to include `pages/` and root `index.html`.
 - Add Git status visibility for page changes.
 
+### Phase nine: head elements model + inspector
+
+- Extend `page-model.js`: `HeadElement` typedef, `addHeadElement`, `updateHeadElement`, `removeHeadElement`, head validation.
+- Extend `createEmptyPage` to include an empty `head` array.
+- Extend `validatePage` to validate head elements.
+- Extend `page-inspector.js` to render head element fields (stylesheet, style, meta, script).
+- Extend `page-editor.js` wiring: head element selection state, inspector dispatch.
+- Extend `pages_gen.rs`: emit head elements in the generated `<head>` with ordering rules and `meta` deduplication.
+- Extend `page-import.rs`: import `<link>`, `<style>`, `<meta>`, `<script>` into `head` array.
+
+**Done when:** head elements can be added, edited, deleted; generated HTML includes them in correct order; existing `meta` backward compat works.
+
+### Phase ten: DOM tree panel
+
+- Add `components/page-tree.js`: recursive tree renderer for head + body sections.
+- Head section: list head elements with type icons, labels, add dropdown.
+- Body section: recursive node tree with expand/collapse, type badges, content preview.
+- Click-to-select syncs with canvas and inspector.
+- Canvas selection syncs back to tree (scroll into view, auto-expand).
+- Keyboard navigation: arrow keys, Enter to select, Delete to remove.
+- Styles in `components.css` for tree layout, selection, hover, expand/collapse.
+- Wire into `page-editor.js` as the second column (between palette and canvas).
+
+**Done when:** tree panel shows full document structure, head + body, selection syncs both ways, head elements addable from tree.
+
 ## 25. Initial success criteria
 
 The first page-editor version is successful when a user can:
@@ -918,3 +1153,9 @@ The first page-editor version is successful when a user can:
 17. Confirm that generated pages contain real HTML content without requiring JavaScript.
 18. Keep the index page protected from deletion.
 19. Publish the generated files through the existing Git workflow.
+20. Add stylesheets, inline styles, meta tags, and scripts to the page head.
+21. Edit head element properties in the inspector (href, CSS textarea, meta fields, script src/js).
+22. See head elements emitted in the correct order in generated HTML.
+23. Navigate the full document tree in the DOM tree panel.
+24. Select elements from the tree and see them highlighted on the canvas.
+25. Add head elements from the DOM tree panel's "+ Add" button.

@@ -3,6 +3,7 @@
 // Hover label on directly-hovered element only (no stacking).
 // Alt+click shows element picker for all nodes under cursor.
 // Images resolved via /files/{projectId}/ for canvas display.
+// Canvas supports zoom (CSS transform scale) and resizable viewport width.
 
 import * as pm from '../page-model.js';
 import { el } from '../dom.js';
@@ -19,27 +20,81 @@ export function setProjectId(id) { _projectId = id; }
 
 /**
  * Renders the visual canvas from the page document tree.
- * @param {HTMLElement} root - Container element to render the canvas into.
- * @param {Object|null} doc - Page document with a root node tree, or null if no page loaded.
+ * Preserves zoom level and viewport width across re-renders.
+ * @param {HTMLElement} root - Container element (.page-canvas).
+ * @param {Object|null} doc - Page document with a root node tree, or null.
  * @param {string|null} selectedNodeId - ID of the currently selected node, or null.
  * @param {function(string): void} onSelect - Callback when a node is selected.
- * @param {function(string, string, number): void} onDrop - Callback when a node is dropped (nodeId, targetParentId, index).
- * @param {function(string, number, string): void} onAddNode - Callback to add a new node (parentId, index, type).
+ * @param {function(string, string, number): void} onDrop - Callback when a node is dropped.
+ * @param {function(string, number, string): void} onAddNode - Callback to add a new node.
  * @returns {void}
  */
 export function renderCanvas(root, doc, selectedNodeId, onSelect, onDrop, onAddNode) {
-  root.textContent = '';
+  // Preserve zoom/viewport state across re-renders
+  const existingZoomWrap = root.querySelector('.canvas-zoom-wrap');
+  const existingViewport = root.querySelector('.canvas-viewport');
+  const zoomPctEl = root.querySelector('.canvas-zoom-pct');
 
   if (!doc || !doc.root) {
+    root.textContent = '';
     root.append(el('div', { class: 'page-canvas-empty muted-note', text: 'No page loaded' }));
     return;
   }
 
-  root.append(el('div', { class: 'canvas-label mono-label', text: 'CANVAS' }));
+  // If first render, build the full structure
+  if (!existingViewport) {
+    root.textContent = '';
 
-  const pageLayer = el('div', { class: 'canvas-page-layer' });
-  renderNode(pageLayer, doc.root, selectedNodeId, onSelect, onDrop, onAddNode);
-  root.append(pageLayer);
+    // Scroll container (centers the viewport, handles overflow)
+    const scroll = el('div', { class: 'canvas-viewport-scroll' });
+    root.append(scroll);
+
+    // Viewport container (resizable width)
+    const viewport = el('div', { class: 'canvas-viewport' });
+    viewport.style.width = '1200px';
+    scroll.append(viewport);
+
+    // Zoom wrapper (CSS transform scale)
+    const zoomWrap = el('div', { class: 'canvas-zoom-wrap' });
+    viewport.append(zoomWrap);
+
+    // Page layer (white page)
+    const pageLayer = el('div', { class: 'canvas-page-layer' });
+    renderNode(pageLayer, doc.root, selectedNodeId, onSelect, onDrop, onAddNode);
+    zoomWrap.append(pageLayer);
+
+    // Resize handle
+    const handle = el('div', { class: 'canvas-resize-handle' });
+    viewport.append(handle);
+
+    // Width label
+    const widthLabel = el('div', { class: 'canvas-width-label' });
+    viewport.append(widthLabel);
+
+    // Zoom bar
+    const zoomBar = el('div', { class: 'canvas-zoom-bar' });
+    const zoomOut = el('button', { title: 'Zoom out (Ctrl+-)', text: '−' });
+    const zoomPct = el('span', { class: 'canvas-zoom-pct', text: '100%' });
+    const zoomIn = el('button', { title: 'Zoom in (Ctrl++)', text: '+' });
+    const zoomFit = el('button', { class: 'canvas-zoom-fit', title: 'Fit to width', text: 'Fit' });
+    zoomBar.append(zoomOut, zoomPct, zoomIn, zoomFit);
+    root.append(zoomBar);
+
+    // Wire zoom controls (callbacks set by page-editor.js via setupCanvasZoom)
+    root._zoomBar = zoomBar;
+    root._zoomPct = zoomPct;
+    root._viewport = viewport;
+    root._zoomWrap = zoomWrap;
+    root._resizeHandle = handle;
+    root._widthLabel = widthLabel;
+  } else {
+    // Re-render: just update the page layer content inside existing structure
+    const zoomWrap = root.querySelector('.canvas-zoom-wrap');
+    zoomWrap.textContent = '';
+    const pageLayer = el('div', { class: 'canvas-page-layer' });
+    renderNode(pageLayer, doc.root, selectedNodeId, onSelect, onDrop, onAddNode);
+    zoomWrap.append(pageLayer);
+  }
 }
 
 /**

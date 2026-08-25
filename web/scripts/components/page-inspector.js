@@ -341,6 +341,211 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
 }
 
 /**
+ * Renders the inspector panel for a head element (spec_page_editor.md §11 "Head element inspector").
+ * @param {HTMLElement} root - Container element to render the inspector into.
+ * @param {Object|null} doc - Page document containing the head array.
+ * @param {number|null} headIndex - Index into doc.head of the selected head element.
+ * @param {function(): void} onChange - Callback invoked when any property is modified.
+ * @param {function(): void} onRemove - Callback invoked to remove the head element.
+ * @returns {void}
+ */
+export function renderHeadInspector(root, doc, headIndex, onChange, onRemove) {
+  root.textContent = '';
+
+  if (!doc || headIndex === null || headIndex === undefined || !doc.head || !doc.head[headIndex]) {
+    root.append(el('div', { class: 'inspector-empty' },
+      el('span', { class: 'muted-note', text: 'No head element selected' }),
+    ));
+    return;
+  }
+
+  const elem = doc.head[headIndex];
+
+  root.append(el('div', { class: 'canvas-label mono-label', text: 'INSPECTOR' }));
+
+  root.append(el('div', { class: 'inspector-section' },
+    el('label', { text: 'Type' }),
+    el('div', { class: 'inspector-type', text: elem.type }),
+  ));
+
+  // --- stylesheet ---
+  if (elem.type === 'stylesheet') {
+    const hrefInput = el('input', {
+      type: 'text',
+      class: 'value-input',
+      value: elem.href || '',
+      placeholder: '/css/main.css',
+    });
+    hrefInput.addEventListener('input', () => { elem.href = hrefInput.value; onChange(); });
+    root.append(el('div', { class: 'inspector-section' },
+      el('label', { text: 'href' }),
+      hrefInput,
+    ));
+
+    const mediaInput = el('input', {
+      type: 'text',
+      class: 'value-input',
+      value: elem.media || '',
+      placeholder: 'screen (optional)',
+    });
+    mediaInput.addEventListener('input', () => { elem.media = mediaInput.value; onChange(); });
+    root.append(el('div', { class: 'inspector-section' },
+      el('label', { text: 'media' }),
+      mediaInput,
+    ));
+  }
+
+  // --- style ---
+  if (elem.type === 'style') {
+    const cssTa = el('textarea', {
+      class: 'value-input',
+      rows: '8',
+      placeholder: 'CSS rules...',
+      style: { fontFamily: 'monospace' },
+    });
+    cssTa.value = elem.css || '';
+    cssTa.addEventListener('input', () => { elem.css = cssTa.value; onChange(); });
+    root.append(el('div', { class: 'inspector-section' },
+      el('label', { text: 'css' }),
+      cssTa,
+    ));
+  }
+
+  // --- meta ---
+  if (elem.type === 'meta') {
+    const nameInput = el('input', {
+      type: 'text',
+      class: 'value-input',
+      value: elem.name || '',
+      placeholder: 'e.g. author, robots',
+    });
+    nameInput.addEventListener('input', () => { elem.name = nameInput.value; onChange(); });
+    root.append(el('div', { class: 'inspector-section' },
+      el('label', { text: 'name' }),
+      nameInput,
+    ));
+
+    const propInput = el('input', {
+      type: 'text',
+      class: 'value-input',
+      value: elem.property || '',
+      placeholder: 'e.g. og:title',
+    });
+    propInput.addEventListener('input', () => { elem.property = propInput.value; onChange(); });
+    root.append(el('div', { class: 'inspector-section' },
+      el('label', { text: 'property' }),
+      propInput,
+    ));
+
+    const charsetInput = el('input', {
+      type: 'text',
+      class: 'value-input',
+      value: elem.charset || '',
+      placeholder: 'e.g. utf-8',
+    });
+    charsetInput.addEventListener('input', () => { elem.charset = charsetInput.value; onChange(); });
+    root.append(el('div', { class: 'inspector-section' },
+      el('label', { text: 'charset' }),
+      charsetInput,
+    ));
+
+    const contentInput = el('input', {
+      type: 'text',
+      class: 'value-input',
+      value: elem.content || '',
+      placeholder: 'Meta content value',
+    });
+    contentInput.addEventListener('input', () => { elem.content = contentInput.value; onChange(); });
+    root.append(el('div', { class: 'inspector-section', 'data-meta-content': '' },
+      el('label', { text: 'content' }),
+      contentInput,
+    ));
+
+    // Hide content when charset is set
+    const contentSection = root.querySelector('[data-meta-content]');
+    if (elem.charset) contentSection.style.display = 'none';
+    charsetInput.addEventListener('input', () => {
+      contentSection.style.display = charsetInput.value ? 'none' : '';
+    });
+  }
+
+  // --- script ---
+  if (elem.type === 'script') {
+    const srcInput = el('input', {
+      type: 'text',
+      class: 'value-input',
+      value: elem.src || '',
+      placeholder: '/js/app.js',
+    });
+    srcInput.addEventListener('input', () => { elem.src = srcInput.value; onChange(); });
+    root.append(el('div', { class: 'inspector-section', 'data-script-src': '' },
+      el('label', { text: 'src' }),
+      srcInput,
+    ));
+
+    const jsTa = el('textarea', {
+      class: 'value-input',
+      rows: '6',
+      placeholder: 'Inline JavaScript...',
+      style: { fontFamily: 'monospace' },
+    });
+    jsTa.value = elem.js || '';
+    jsTa.addEventListener('input', () => { elem.js = jsTa.value; onChange(); });
+    root.append(el('div', { class: 'inspector-section', 'data-script-js': '' },
+      el('label', { text: 'js' }),
+      jsTa,
+    ));
+
+    // Show src when js is empty, show js when src is empty
+    const srcSection = root.querySelector('[data-script-src]');
+    const jsSection = root.querySelector('[data-script-js]');
+    function syncScriptFields() {
+      if (elem.src) {
+        jsSection.style.display = 'none';
+        srcSection.style.display = '';
+      } else {
+        srcSection.style.display = 'none';
+        jsSection.style.display = '';
+      }
+    }
+    syncScriptFields();
+    srcInput.addEventListener('input', () => { syncScriptFields(); });
+    jsTa.addEventListener('input', () => { syncScriptFields(); });
+
+    // defer + async checkboxes (only meaningful when src is set)
+    const deferCb = el('input', { type: 'checkbox' });
+    deferCb.checked = !!elem.defer;
+    deferCb.addEventListener('change', () => { elem.defer = deferCb.checked; onChange(); });
+    const deferLabel = el('label', { class: 'inspector-class-item' }, deferCb, el('span', { text: 'defer' }));
+    const deferRow = el('div', { class: 'inspector-section' }, deferLabel);
+    root.append(deferRow);
+    deferRow.style.display = elem.src ? '' : 'none';
+    srcInput.addEventListener('input', () => { deferRow.style.display = elem.src ? '' : 'none'; });
+
+    const asyncCb = el('input', { type: 'checkbox' });
+    asyncCb.checked = !!elem.async;
+    asyncCb.addEventListener('change', () => { elem.async = asyncCb.checked; onChange(); });
+    const asyncLabel = el('label', { class: 'inspector-class-item' }, asyncCb, el('span', { text: 'async' }));
+    const asyncRow = el('div', { class: 'inspector-section' }, asyncLabel);
+    root.append(asyncRow);
+    asyncRow.style.display = elem.src ? '' : 'none';
+    srcInput.addEventListener('input', () => { asyncRow.style.display = elem.src ? '' : 'none'; });
+  }
+
+  // Delete button
+  root.append(el('div', { class: 'inspector-divider' }));
+  const delBtn = el('button', {
+    class: 'btn-secondary inspector-delete',
+    onclick: () => {
+      if (confirm(`Delete ${elem.type} element?`)) {
+        onRemove();
+      }
+    },
+  }, icon('delete', 16), ' Delete');
+  root.append(delBtn);
+}
+
+/**
  * Shows a CSS property picker dropdown with search filtering and keyboard navigation.
  * @param {HTMLElement} container - The styles container element.
  * @param {HTMLElement} addBtn - The "Add style" button to position the picker near.

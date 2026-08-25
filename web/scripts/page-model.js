@@ -1,6 +1,6 @@
-// Page tree model (spec_page_editor.md §§9–10).
+// Page tree model (spec_page_editor.md §§9–10, 9a).
 // Pure functions, zero DOM — mirrors the approach of json-model.js.
-// Manages page document structure, node operations, and nesting validation.
+// Manages page document structure, node operations, head elements, and nesting validation.
 
 /**
  * @typedef {Object} PageNode
@@ -10,6 +10,32 @@
  * @property {Object<string, string>} [styles] - Inline CSS styles.
  * @property {string[]} [classes] - CSS class names.
  * @property {PageNode[]} [children] - Child nodes (only for box type).
+ */
+
+/**
+ * @typedef {Object} HeadElement
+ * @property {'stylesheet'|'style'|'meta'|'script'} type - Head element type.
+ * @property {string} [href] - Stylesheet URL (stylesheet type).
+ * @property {string} [media] - Media query (stylesheet type).
+ * @property {string} [css] - Inline CSS text (style type).
+ * @property {string} [name] - Meta name (meta type).
+ * @property {string} [property] - Open Graph property (meta type).
+ * @property {string} [charset] - Character set (meta type).
+ * @property {string} [content] - Meta content (meta type).
+ * @property {string} [src] - Script URL (script type).
+ * @property {string} [js] - Inline JavaScript (script type).
+ * @property {boolean} [defer] - Defer attribute (script type).
+ * @property {boolean} [async] - Async attribute (script type).
+ */
+
+/**
+ * @typedef {Object} PageDocument
+ * @property {number} version - Document version (always 1).
+ * @property {string} title - Page title.
+ * @property {{ description: string, og_image: string }} meta - Legacy meta fields.
+ * @property {HeadElement[]} head - Head elements array.
+ * @property {Array<{name: string, label?: string, description?: string, styles: Object<string, string>}>} classes - Reusable CSS classes.
+ * @property {PageNode} root - Root page node.
  */
 
 let nextId = 1;
@@ -117,16 +143,89 @@ export function resetIdCounter(start = 1) {
  * Create an empty page document with a single root box node.
  *
  * @param {string} [title='New Page'] - Page title.
- * @returns {{ version: number, title: string, meta: { description: string, og_image: string }, classes: string[], root: PageNode }} A new page document.
+ * @returns {PageDocument} A new page document.
  */
 export function createEmptyPage(title = 'New Page') {
   return {
     version: 1,
     title,
     meta: { description: '', og_image: '' },
+    head: [],
     classes: [],
     root: createNode('box', { element: 'main' }),
   };
+}
+
+// ================== HEAD ELEMENTS ==================
+
+/**
+ * Default properties for each head element type.
+ * @type {Object<string, Object<string, *>>}
+ */
+const HEAD_DEFAULTS = {
+  stylesheet: { href: '' },
+  style: { css: '' },
+  meta: { name: '', content: '' },
+  script: { src: '' },
+};
+
+/**
+ * Add a new head element to the document's head array.
+ *
+ * @param {PageDocument} doc - The page document.
+ * @param {'stylesheet'|'style'|'meta'|'script'} type - Head element type.
+ * @param {Object<string, *>} [props] - Initial properties to merge.
+ * @returns {HeadElement|null} The newly created head element, or null if type is invalid.
+ */
+export function addHeadElement(doc, type, props = {}) {
+  if (!HEAD_DEFAULTS[type]) return null;
+  if (!doc.head) doc.head = [];
+  const element = { type, ...HEAD_DEFAULTS[type], ...props };
+  doc.head.push(element);
+  return element;
+}
+
+/**
+ * Update properties of a head element at the given index.
+ *
+ * @param {PageDocument} doc - The page document.
+ * @param {number} index - Index in the head array.
+ * @param {Object<string, *>} props - Properties to merge into the element.
+ * @returns {boolean} True if the element was updated, false if index is out of bounds.
+ */
+export function updateHeadElement(doc, index, props) {
+  if (!doc.head || index < 0 || index >= doc.head.length) return false;
+  Object.assign(doc.head[index], props);
+  return true;
+}
+
+/**
+ * Remove a head element at the given index.
+ *
+ * @param {PageDocument} doc - The page document.
+ * @param {number} index - Index in the head array.
+ * @returns {boolean} True if the element was removed, false if index is out of bounds.
+ */
+export function removeHeadElement(doc, index) {
+  if (!doc.head || index < 0 || index >= doc.head.length) return false;
+  doc.head.splice(index, 1);
+  return true;
+}
+
+/**
+ * Get a human-readable label for a head element.
+ *
+ * @param {HeadElement} elem - The head element.
+ * @returns {string} A short label (max ~40 chars).
+ */
+export function headElementLabel(elem) {
+  switch (elem.type) {
+    case 'stylesheet': return elem.href || '(empty stylesheet)';
+    case 'style': return (elem.css || '').slice(0, 40) || '(empty style)';
+    case 'meta': return elem.name ? `name="${elem.name}"` : elem.property ? `property="${elem.property}"` : elem.charset ? `charset="${elem.charset}"` : '(meta)';
+    case 'script': return elem.src || (elem.js || '').slice(0, 40) || '(empty script)';
+    default: return elem.type;
+  }
 }
 
 // ================== TREE TRAVERSAL ==================
@@ -337,6 +436,33 @@ export function validatePage(doc) {
   const seenIds = new Set();
   validateNode(doc.root, seenIds, errors);
 
+  // Validate head elements
+  if (doc.head && Array.isArray(doc.head)) {
+    for (let i = 0; i < doc.head.length; i++) {
+      const he = doc.head[i];
+      if (!he || typeof he !== 'object') {
+        errors.push(`Head element ${i} must be an object`);
+        continue;
+      }
+      if (!HEAD_DEFAULTS[he.type]) {
+        errors.push(`Head element ${i} has unknown type '${he.type}'`);
+        continue;
+      }
+      if (he.type === 'stylesheet' && !he.href) {
+        errors.push(`Head element ${i} (stylesheet) must have an 'href'`);
+      }
+      if (he.type === 'style' && !he.css) {
+        errors.push(`Head element ${i} (style) must have 'css'`);
+      }
+      if (he.type === 'meta' && !he.charset && !he.name && !he.property) {
+        errors.push(`Head element ${i} (meta) must have 'name', 'property', or 'charset'`);
+      }
+      if (he.type === 'script' && !he.src && !he.js) {
+        errors.push(`Head element ${i} (script) must have 'src' or 'js'`);
+      }
+    }
+  }
+
   return { valid: errors.length === 0, errors };
 }
 
@@ -405,6 +531,8 @@ export function parsePage(text) {
   }
   if (doc.root) scanIds(doc.root);
   nextId = maxId + 1;
+  // Ensure head array exists for backward compatibility
+  if (!doc.head || !Array.isArray(doc.head)) doc.head = [];
   return doc;
 }
 
