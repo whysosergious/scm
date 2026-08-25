@@ -144,7 +144,7 @@ select:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: rgba(18, 33, 49, 0.3);
+  background-color: rgba(26, 29, 35, 0.4);
 }
 
 .add-section-left {
@@ -470,7 +470,7 @@ select:focus {
 .empty-state {
   border: 1px dashed var(--color-outline-variant);
   border-radius: var(--radius);
-  background-color: rgba(18, 33, 49, 0.3);
+  background-color: rgba(26, 29, 35, 0.4);
   padding: 48px 24px;
   text-align: center;
   display: flex;
