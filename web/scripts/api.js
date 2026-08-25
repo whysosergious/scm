@@ -91,4 +91,25 @@ export const api = {
       `/api/projects/${encodeURIComponent(id)}/publish`,
       json(message ? { message } : {}),
     ),
+
+  // ================== PAGES ==================
+
+  listPages: (id) =>
+    request('GET', `/api/projects/${encodeURIComponent(id)}/pages`),
+  loadPage: async (id, name) => ({
+    name,
+    text: await request('GET', `/api/projects/${encodeURIComponent(id)}/pages/${encodeURIComponent(name)}`, undefined, true),
+  }),
+  savePage: (id, name, text) =>
+    request('PUT', `/api/projects/${encodeURIComponent(id)}/pages/${encodeURIComponent(name)}`, text),
+  createPage: (id, name, initial) =>
+    request('POST', `/api/projects/${encodeURIComponent(id)}/pages`, json({ name, initial })),
+  deletePage: (id, name) =>
+    request('DELETE', `/api/projects/${encodeURIComponent(id)}/pages/${encodeURIComponent(name)}`),
+  generatePage: (id, name) =>
+    request('POST', `/api/projects/${encodeURIComponent(id)}/pages/${encodeURIComponent(name)}/generate`),
+  previewPageUrl: (id, name) =>
+    `/api/projects/${encodeURIComponent(id)}/pages/${encodeURIComponent(name)}/preview`,
+  importPage: (id, html) =>
+    request('POST', `/api/projects/${encodeURIComponent(id)}/pages/import`, json({ html })),
 };

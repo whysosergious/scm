@@ -6,6 +6,7 @@ use crate::config::{AppConfig, ProjectConfig};
 use crate::content;
 use crate::error::{ScmError, ScmResult};
 use crate::git;
+use crate::pages;
 use crate::project::{self, CheckoutStatus};
 use crate::setup::AppState;
 use actix_web::{delete, get, http::header, post, put, web, HttpResponse, Responder};
@@ -256,6 +257,166 @@ pub async fn put_content_file(
     let dest = project::checkout_path(&state.projects_root(), &p.id)?;
     content::save_file(&dest, &p.content_dir, &name, text).await?;
     Ok(HttpResponse::Ok().json(json!({ "saved": true, "name": name })))
+}
+
+// ================== PAGES ==================
+
+#[derive(Deserialize)]
+pub struct CreatePageBody {
+    pub name: String,
+    #[serde(default)]
+    pub initial: Option<Value>,
+}
+
+/// List page JSON files in the project's pages/ directory.
+#[get("/projects/{id}/pages")]
+pub async fn list_pages(state: Ctx, path: web::Path<String>) -> ScmResult<HttpResponse> {
+    let p = get_project(&state, path.into_inner())?;
+    let dest = project::checkout_path(&state.projects_root(), &p.id)?;
+    let files = pages::list_pages(&dest).await?;
+    Ok(HttpResponse::Ok().json(json!({ "files": files })))
+}
+
+/// Load a page JSON file as raw text.
+#[get("/projects/{id}/pages/{name}")]
+pub async fn get_page(state: Ctx, path: web::Path<(String, String)>) -> ScmResult<HttpResponse> {
+    let (id, name) = path.into_inner();
+    let p = get_project(&state, id)?;
+    let dest = project::checkout_path(&state.projects_root(), &p.id)?;
+    let raw = pages::load_page(&dest, &name).await?;
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "application/json"))
+        .body(raw))
+}
+
+/// Create a new page JSON file.
+#[post("/projects/{id}/pages")]
+pub async fn create_page(
+    state: Ctx,
+    path: web::Path<String>,
+    body: web::Bytes,
+) -> ScmResult<HttpResponse> {
+    let p = get_project(&state, path.into_inner())?;
+    let parsed = json_body(&body)?;
+    let body: CreatePageBody = serde_json::from_value(parsed)
+        .map_err(|e| ScmError::config("Invalid create-page payload").with_detail(e.to_string()))?;
+
+    let dest = project::checkout_path(&state.projects_root(), &p.id)?;
+    pages::create_page(&dest, &body.name, body.initial.as_ref()).await?;
+    Ok(HttpResponse::Created().json(json!({ "created": true, "name": body.name })))
+}
+
+/// Save a page JSON file (validate + atomic write).
+#[put("/projects/{id}/pages/{name}")]
+pub async fn put_page(
+    state: Ctx,
+    path: web::Path<(String, String)>,
+    body: web::Bytes,
+) -> ScmResult<HttpResponse> {
+    let (id, name) = path.into_inner();
+    let p = get_project(&state, id)?;
+    let text = utf8_body(&body)?;
+    let dest = project::checkout_path(&state.projects_root(), &p.id)?;
+    pages::save_page(&dest, &name, text).await?;
+    Ok(HttpResponse::Ok().json(json!({ "saved": true, "name": name })))
+}
+
+/// Delete a non-index page JSON file.
+#[delete("/projects/{id}/pages/{name}")]
+pub async fn delete_page(
+    state: Ctx,
+    path: web::Path<(String, String)>,
+) -> ScmResult<HttpResponse> {
+    let (id, name) = path.into_inner();
+    let p = get_project(&state, id)?;
+    let dest = project::checkout_path(&state.projects_root(), &p.id)?;
+    pages::delete_page(&dest, &name).await?;
+    Ok(HttpResponse::Ok().json(json!({ "deleted": name })))
+}
+
+/// Generate static HTML from a page JSON file.
+#[post("/projects/{id}/pages/{name}/generate")]
+pub async fn generate_page(
+    state: Ctx,
+    path: web::Path<(String, String)>,
+) -> ScmResult<HttpResponse> {
+    let (id, name) = path.into_inner();
+    let p = get_project(&state, id)?;
+    let dest = project::checkout_path(&state.projects_root(), &p.id)?;
+
+    let raw = pages::load_page(&dest, &name).await?;
+    let doc: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|e| ScmError::invalid_json("Page JSON is invalid").with_detail(e.to_string()))?;
+
+    let output_path = crate::pages_gen::generate_html(&dest, &name, &doc)?;
+
+    Ok(HttpResponse::Ok().json(json!({
+        "generated": true,
+        "output": output_path,
+    })))
+}
+
+/// Serve generated HTML for preview.
+#[get("/projects/{id}/pages/{name}/preview")]
+pub async fn preview_page(
+    state: Ctx,
+    path: web::Path<(String, String)>,
+) -> ScmResult<HttpResponse> {
+    let (id, name) = path.into_inner();
+    let p = get_project(&state, id)?;
+    let dest = project::checkout_path(&state.projects_root(), &p.id)?;
+
+    let html_name = name.trim_end_matches(".json").to_string() + ".html";
+    let html_path = if name == "index.json" {
+        dest.join(&html_name)
+    } else {
+        dest.join("pages").join(&html_name)
+    };
+
+    let html = tokio::fs::read_to_string(&html_path)
+        .await
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                ScmError::not_found(format!(
+                    "Generated HTML for '{name}' not found — generate it first"
+                ))
+            } else {
+                ScmError::filesystem("Could not read generated HTML").with_detail(e.to_string())
+            }
+        })?;
+
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, "text/html"))
+        .body(html))
+}
+
+/// Import an HTML file into a page JSON document.
+#[post("/projects/{id}/pages/import")]
+pub async fn import_page(
+    state: Ctx,
+    path: web::Path<String>,
+    body: web::Bytes,
+) -> ScmResult<HttpResponse> {
+    let p = get_project(&state, path.into_inner())?;
+    let parsed = json_body(&body)?;
+    let html = parsed
+        .get("html")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ScmError::config("Import payload must contain { html }"))?;
+
+    let dest = project::checkout_path(&state.projects_root(), &p.id)?;
+    let result = crate::pages_import::import_html(html)?;
+
+    // Save the imported page
+    let page_name = result
+        .get("saved_as")
+        .and_then(|v| v.as_str())
+        .unwrap_or("imported.json");
+    let _page_json = serde_json::to_string_pretty(&result["page"])
+        .map_err(|e| ScmError::internal("Failed to serialize imported page").with_detail(e.to_string()))?;
+    pages::create_page(&dest, page_name, Some(&result["page"])).await?;
+
+    Ok(HttpResponse::Ok().json(result))
 }
 
 // ================== MEDIA ==================
@@ -698,6 +859,10 @@ pub async fn publish(state: Ctx, path: web::Path<String>, body: web::Bytes) -> S
     let legacy_assets = "public/images";
     if dest.join(legacy_assets).is_dir() {
         pathspecs.push(legacy_assets.to_string());
+    }
+    // Include pages directory when present
+    if dest.join("pages").is_dir() {
+        pathspecs.push("pages".to_string());
     }
     let stage_refs: Vec<&str> = pathspecs.iter().map(|s| s.as_str()).collect();
     if let Err(e) = git::stage(&dest, &stage_refs).await {

@@ -1,14 +1,16 @@
 // App bootstrap: sidebar toggle, store subscription → view rendering.
 
 import { api } from './api.js';
-import { applySelectionRules, patch, refreshGitStatus, refreshFiles, refreshProjects, selectedProject, state, subscribe } from './state.js';
+import { applySelectionRules, patch, refreshGitStatus, refreshFiles, refreshPages, refreshProjects, selectedProject, state, subscribe } from './state.js';
 import { renderContentNav } from './components/content-list.js';
+import { renderPagesNav } from './components/pages-list.js';
 import { renderConfigEditor } from './components/config-editor.js';
 import { renderHeaderStatus } from './components/git-status.js';
 import { renderProjectInfo } from './components/project-info.js';
 import { renderProjectSelector } from './components/project-selector.js';
 import { renderEditor } from './components/json-editor.js';
 import { renderMedia } from './components/media.js';
+import { renderPageEditor } from './components/page-editor.js';
 import { toast, toastError } from './components/toast.js';
 
 const $ = (id) => document.getElementById(id);
@@ -46,6 +48,7 @@ $('nav-media').addEventListener('click', (e) => {
 function render() {
   renderProjectSelector($('header-title'));
   renderContentNav($('content-nav'));
+  renderPagesNav($('pages-nav'));
   renderHeaderStatus($('header-status'));
   renderProjectInfo();
 
@@ -62,6 +65,10 @@ function render() {
   }
   if (state.view === 'settings') {
     renderConfigEditor(root);
+    return;
+  }
+  if (state.view === 'page-editor') {
+    renderPageEditor(root);
     return;
   }
 
@@ -101,7 +108,7 @@ subscribe(render);
       }
     }
 
-    await Promise.all([refreshFiles().catch(() => {}), refreshGitStatus().catch(() => {})]);
+    await Promise.all([refreshFiles().catch(() => {}), refreshPages().catch(() => {}), refreshGitStatus().catch(() => {})]);
   } catch (err) {
     toastError(err);
   } finally {

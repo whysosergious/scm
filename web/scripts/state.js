@@ -12,8 +12,10 @@ export const state = {
   selectedId: null,
   selectedFile: null,
   files: [],
+  pages: [],
+  selectedPage: null,
   gitStatus: null,
-  view: 'content', // 'content' | 'settings' | 'media'
+  view: 'content', // 'content' | 'settings' | 'media' | 'page-editor'
 };
 
 const listeners = new Set();
@@ -62,10 +64,12 @@ export function setSelection(id) {
   patch({
     selectedId: id,
     selectedFile: null,
+    selectedPage: null,
     gitStatus: null,
     view: 'content',
   });
   refreshFiles().catch(() => {});
+  refreshPages().catch(() => {});
   refreshGitStatus().catch(() => {});
 }
 
@@ -80,6 +84,22 @@ export async function refreshFiles() {
     // empty-state UI explains what to do.
     patch({ files: [] });
   }
+}
+
+export async function refreshPages() {
+  const project = selectedProject();
+  if (!project || !state.projects.find((p) => p.id === project.id)) return;
+  try {
+    const data = await api.listPages(project.id);
+    patch({ pages: data.files.map((f) => f.name || f) });
+  } catch (e) {
+    // Pages dir may not exist yet — represent as empty list.
+    patch({ pages: [] });
+  }
+}
+
+export function setPageSelection(name) {
+  patch({ selectedPage: name, view: 'page-editor', selectedFile: null });
 }
 
 export async function refreshGitStatus() {
