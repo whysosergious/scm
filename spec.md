@@ -52,7 +52,7 @@ The first version does not require:
 
 - Standard HTML, standard CSS, vanilla JavaScript ES modules.
 - Custom elements where useful; light DOM only — no automatic Shadow DOM.
-- No framework and no runtime bundler. The **single exception** is the rich text editor: ProseMirror is pre-built with vite from `editor-src/` into a self-contained, committed ES bundle (`web/scripts/vendor/rich-editor.bundle.js`) that the app lazy-imports at runtime. npm/vite are never needed to launch the frontend — only when changing the editor component.
+- No framework and no runtime bundler. The **single exception** is the rich text editor: ProseMirror is pre-built with vite from `web/editor-src/` into a self-contained, committed ES bundle (`web/scripts/vendor/rich-editor.bundle.js`) that the app lazy-imports at runtime. npm/vite are never needed to launch the frontend — only when changing the editor component.
 - The control panel is a fixed-viewport layout: only the canvas scrolls; sidebar and header stay put. Scrollbars are styled to match the theme.
 
 ## 4. Repository structure
@@ -79,6 +79,7 @@ scm/
 ├── web/
 │   ├── index.html
 │   ├── styles/             # base.css, layout.css, components.css
+│   ├── editor-src/         # npm project for the rich editor (build-time only)
 │   └── scripts/
 │       ├── main.js         # bootstrap: store subscription → view rendering
 │       ├── state.js        # tiny pub/sub store + selection rules
@@ -87,7 +88,6 @@ scm/
 │       ├── json-model.js   # order-preserving JSON tree model (own parser)
 │       ├── components/     # form-editor, json-editor, dnd, panels, toast…
 │       └── vendor/         # committed rich-editor.bundle.js (ProseMirror)
-├── editor-src/             # npm project for the rich editor (build-time only)
 ├── tools/e2e/              # headless regression suite + harness docs
 └── projects/               # local checkouts of target repos (git-ignored)
 ```

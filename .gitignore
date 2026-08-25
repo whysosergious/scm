@@ -2,4 +2,4 @@
 .env 
 *.lock
 /projects/*
-editor-src/node_modules/
+web/editor-src/node_modules/

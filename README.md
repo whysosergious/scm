@@ -28,6 +28,8 @@ Built with Rust (Actix Web + Tokio) and vanilla HTML/CSS/JS ES modules.
 - **Safety** — path-traversal protection everywhere, atomic file writes,
   JSON key order preserved (`serde_json/preserve_order`), API responses
   never cached.
+- **Fixed-viewport UI** — only the content canvas scrolls (sidebar and
+  header stay put); scrollbars are styled to match the theme.
 
 ## Quickstart
 
@@ -115,14 +117,14 @@ framework, no Shadow DOM.
 
 ### Rich text editor
 
-The ProseMirror-based editor lives in `editor-src/` as an isolated npm
+The ProseMirror-based editor lives in `web/editor-src/` as an isolated npm
 project. Its build output is committed, so npm/vite are only needed when
 changing the editor component:
 
 ```bash
-cd editor-src
+cd web/editor-src
 npm install
-npm run build        # -> web/scripts/vendor/rich-editor.bundle.js
+npm run build        # -> ../scripts/vendor/rich-editor.bundle.js
 ```
 
 The app lazy-imports that bundle at runtime; never run npm/vite to launch
@@ -137,10 +139,10 @@ instructions in `tools/e2e/README.md`.
 ## Repository layout
 
 ```text
-src/          Rust backend (config, git, content, project, http API)
-web/          control panel (styles, scripts, vendor bundle)
-editor-src/   ProseMirror editor source + build (build-time only)
-tools/e2e/    headless regression suite
-projects/     local checkouts of target repos (git-ignored)
-spec.md       product specification
+src/                Rust backend (config, git, content, project, http API)
+web/                control panel (styles, scripts, vendor bundle)
+web/editor-src/     ProseMirror editor source + build (build-time only)
+tools/e2e/          headless regression suite
+projects/           local checkouts of target repos (git-ignored)
+spec.md             product specification
 ```
