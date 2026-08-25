@@ -95,6 +95,7 @@ pub async fn list_projects(state: Ctx) -> ScmResult<HttpResponse> {
 
     Ok(HttpResponse::Ok().json(json!({
         "projects_dir": cfg.projects_dir,
+        "media_dir": cfg.media_dir,
         "projects": projects,
     })))
 }
@@ -257,21 +258,26 @@ pub async fn put_content_file(
     Ok(HttpResponse::Ok().json(json!({ "saved": true, "name": name })))
 }
 
-// ================== ASSETS ==================
+// ================== MEDIA ==================
 
-const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "ico", "bmp"];
-const MAX_ASSET_BYTES: usize = 20 * 1024 * 1024;
+#[derive(Deserialize)]
+pub struct AssetQuery {
+    pub filename: String,
+}
 
-/// Sanitize a client-supplied filename to a safe single path component and
-/// enforce the image extension allowlist. Returns (stem, lowercase_ext).
-fn sanitize_image_filename(raw: &str) -> Option<(String, String)> {
+const MEDIA_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "ico", "bmp"];
+const MAX_MEDIA_BYTES: usize = 20 * 1024 * 1024;
+
+/// Validate a media filename: safe single component with an image extension
+/// allow-list. Returns the normalized "stem.ext" form.
+fn sanitize_media_filename(raw: &str) -> Option<String> {
     let base = raw.rsplit(['/', '\\']).next()?.trim();
     if base.is_empty() || base.len() > 120 {
         return None;
     }
     let (stem, ext) = base.rsplit_once('.')?;
     let ext = ext.to_ascii_lowercase();
-    if !IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+    if !MEDIA_EXTENSIONS.contains(&ext.as_str()) {
         return None;
     }
     let cleaned: String = stem
@@ -282,19 +288,131 @@ fn sanitize_image_filename(raw: &str) -> Option<(String, String)> {
     if stem.is_empty() {
         return None;
     }
-    Some((stem, ext))
+    Some(format!("{stem}.{ext}"))
 }
 
-#[derive(Deserialize)]
-pub struct AssetQuery {
-    pub filename: String,
+fn media_content_type(name: &str) -> &'static str {
+    match name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).as_deref() {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        Some("avif") => "image/avif",
+        Some("ico") => "image/x-icon",
+        Some("bmp") => "image/bmp",
+        _ => "application/octet-stream",
+    }
 }
 
-/// Upload an image into the checkout's `public/images/` folder.
-/// Body: raw image bytes. Query: ?filename=photo.png
-/// Responds with the site-relative URL to embed in content.
-#[post("/projects/{id}/assets")]
-pub async fn upload_asset(
+/// Resolve <checkout>/<media_dir> for a project (traversal-proof).
+async fn media_dir_for(state: &Ctx, p: &ProjectConfig) -> ScmResult<std::path::PathBuf> {
+    let media_dir = state.config().media_dir;
+    let checkout = project::checkout_path(&state.projects_root(), &p.id)?;
+    if !checkout.is_dir() {
+        return Err(ScmError::not_found(format!(
+            "Checkout '{}' does not exist yet — fetch the project first",
+            p.id
+        )));
+    }
+    crate::paths::safe_join(&checkout, std::path::Path::new(&media_dir)).ok_or_else(|| {
+        ScmError::config(format!("Invalid media_dir: '{media_dir}' escapes the checkout"))
+    })
+}
+
+/// Site-relative URL for a media file (normalized, no ./ or trailing /).
+fn media_site_url(media_dir: &str, name: &str) -> String {
+    let dir = media_dir.trim_start_matches("./").trim_end_matches('/');
+    format!("/{dir}/{name}")
+}
+
+#[derive(serde::Serialize)]
+struct MediaEntry {
+    name: String,
+    size: u64,
+    url: String,
+    modified: i64,
+}
+
+/// List image files in the project's media directory.
+#[get("/projects/{id}/media")]
+pub async fn list_media(state: Ctx, path: web::Path<String>) -> ScmResult<HttpResponse> {
+    let p = get_project(&state, path.into_inner())?;
+    let media_dir = state.config().media_dir;
+    let dir = media_dir_for(&state, &p).await?;
+
+    let files = {
+        let media_dir = media_dir.clone();
+        tokio::task::spawn_blocking(move || -> ScmResult<Vec<MediaEntry>> {
+        let mut out: Vec<MediaEntry> = Vec::new();
+        if dir.is_dir() {
+            for entry in std::fs::read_dir(&dir)? {
+                let entry = entry?;
+                let meta = entry.metadata()?;
+                if !meta.is_file() {
+                    continue;
+                }
+                let raw = entry.file_name().to_string_lossy().into_owned();
+                let Some(name) = sanitize_media_filename(&raw) else { continue };
+                if name != raw {
+                    continue; // only exact, already-normalized names
+                }
+                let modified = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                out.push(MediaEntry {
+                    url: media_site_url(&media_dir, &name),
+                    name,
+                    size: meta.len(),
+                    modified,
+                });
+            }
+        }
+        out.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(out)
+        })
+        .await
+        .map_err(|e| ScmError::internal("Media listing task panicked").with_detail(e.to_string()))??
+    };
+
+    Ok(HttpResponse::Ok().json(json!({ "media_dir": media_dir, "files": files })))
+}
+
+/// Serve a media file raw (for previews in the panel).
+#[get("/projects/{id}/media/{name}")]
+pub async fn serve_media(state: Ctx, path: web::Path<(String, String)>) -> ScmResult<HttpResponse> {
+    let (id, name) = path.into_inner();
+    let p = get_project(&state, id)?;
+    let Some(normalized) = sanitize_media_filename(&name) else {
+        return Err(ScmError::config("Invalid media filename"));
+    };
+    let dir = media_dir_for(&state, &p).await?;
+    let file = dir.join(&normalized);
+    let bytes = {
+        let normalized = normalized.clone();
+        tokio::task::spawn_blocking(move || -> ScmResult<Vec<u8>> {
+            std::fs::read(&file).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    ScmError::not_found(format!("Media file '{normalized}' not found"))
+                } else {
+                    ScmError::filesystem("Could not read media file").with_detail(e.to_string())
+                }
+            })
+        })
+        .await
+        .map_err(|e| ScmError::internal("Media serve task panicked").with_detail(e.to_string()))??
+    };
+    Ok(HttpResponse::Ok()
+        .content_type(media_content_type(&normalized))
+        .body(bytes))
+}
+
+/// Upload an image into the media directory. Body: raw bytes.
+#[post("/projects/{id}/media")]
+pub async fn upload_media(
     state: Ctx,
     path: web::Path<String>,
     query: web::Query<AssetQuery>,
@@ -302,46 +420,38 @@ pub async fn upload_asset(
 ) -> ScmResult<HttpResponse> {
     let p = get_project(&state, path.into_inner())?;
     if body.is_empty() {
-        return Err(ScmError::config("Empty upload — no image data received"));
+        return Err(ScmError::config("Empty upload — no file data received"));
     }
-    if body.len() > MAX_ASSET_BYTES {
-        return Err(ScmError::config("Image too large (max 20 MB)"));
+    if body.len() > MAX_MEDIA_BYTES {
+        return Err(ScmError::config("File too large (max 20 MB)"));
     }
-    let Some((stem, ext)) = sanitize_image_filename(&query.filename) else {
+    let Some(name) = sanitize_media_filename(&query.filename) else {
         return Err(ScmError::config(
-            "Invalid image filename — allowed extensions: png, jpg, jpeg, gif, webp, svg, avif, ico, bmp",
+            "Invalid filename — allowed extensions: png, jpg, jpeg, gif, webp, svg, avif, ico, bmp",
         ));
     };
+    let media_dir = state.config().media_dir;
+    let dir = media_dir_for(&state, &p).await?;
 
-    let dest = project::checkout_path(&state.projects_root(), &p.id)?;
-    if !dest.is_dir() {
-        return Err(ScmError::not_found(format!(
-            "Checkout '{}' does not exist yet — fetch the project first",
-            p.id
-        )));
-    }
-    let assets_dir = crate::paths::safe_join(&dest, std::path::Path::new("public/images"))
-        .ok_or_else(|| ScmError::config("Asset path failed safety validation"))?;
-
-    // Deduplicate: photo.png -> photo-2.png -> photo-3.png …
     let final_name = {
-        let assets_dir = assets_dir.clone();
+        let dir = dir.clone();
         tokio::task::spawn_blocking(move || -> ScmResult<String> {
-            std::fs::create_dir_all(&assets_dir)
-                .map_err(|e| ScmError::filesystem("Could not create the images directory").with_detail(e.to_string()))?;
-            let mut candidate = format!("{stem}.{ext}");
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| ScmError::filesystem("Could not create the media directory").with_detail(e.to_string()))?;
+            let mut candidate = name.clone();
             let mut n = 2;
-            while assets_dir.join(&candidate).exists() {
+            while dir.join(&candidate).exists() {
+                let (stem, ext) = candidate.rsplit_once('.').unwrap_or((&candidate, ""));
                 candidate = format!("{stem}-{n}.{ext}");
                 n += 1;
             }
             Ok(candidate)
         })
         .await
-        .map_err(|e| ScmError::internal("Asset task panicked").with_detail(e.to_string()))??
+        .map_err(|e| ScmError::internal("Media upload task panicked").with_detail(e.to_string()))??
     };
 
-    let file_path = assets_dir.join(&final_name);
+    let file_path = dir.join(&final_name);
     let bytes = body.to_vec();
     tokio::task::spawn_blocking(move || -> ScmResult<()> {
         let write = || -> std::io::Result<()> {
@@ -352,14 +462,81 @@ pub async fn upload_asset(
             f.sync_all()?;
             Ok(())
         };
-        write().map_err(|e| ScmError::filesystem("Could not write the uploaded image").with_detail(e.to_string()))
+        write().map_err(|e| ScmError::filesystem("Could not write the uploaded file").with_detail(e.to_string()))
     })
     .await
-    .map_err(|e| ScmError::internal("Asset task panicked").with_detail(e.to_string()))??;
+    .map_err(|e| ScmError::internal("Media upload task panicked").with_detail(e.to_string()))??;
 
-    let url = format!("/public/images/{final_name}");
-    log::info!("Asset uploaded: {} ({} bytes)", url, body.len());
+    let url = media_site_url(&media_dir, &final_name);
+    log::info!("Media uploaded: {} ({} bytes)", url, body.len());
     Ok(HttpResponse::Created().json(json!({ "url": url, "file": final_name })))
+}
+
+/// Delete a media file.
+#[delete("/projects/{id}/media/{name}")]
+pub async fn delete_media(state: Ctx, path: web::Path<(String, String)>) -> ScmResult<HttpResponse> {
+    let (id, name) = path.into_inner();
+    let p = get_project(&state, id)?;
+    let Some(normalized) = sanitize_media_filename(&name) else {
+        return Err(ScmError::config("Invalid media filename"));
+    };
+    let dir = media_dir_for(&state, &p).await?;
+    let file = dir.join(&normalized);
+    let normalized2 = normalized.clone();
+    tokio::task::spawn_blocking(move || -> ScmResult<()> {
+        std::fs::remove_file(&file).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => ScmError::not_found(format!("Media file '{normalized2}' not found")),
+            _ => ScmError::filesystem("Could not delete media file").with_detail(e.to_string()),
+        })
+    })
+    .await
+    .map_err(|e| ScmError::internal("Media delete task panicked").with_detail(e.to_string()))??;
+    Ok(HttpResponse::Ok().json(json!({ "deleted": normalized })))
+}
+
+/// Rename a media file. Rejects renaming onto an existing name (409).
+#[post("/projects/{id}/media/{name}/rename")]
+pub async fn rename_media(
+    state: Ctx,
+    path: web::Path<(String, String)>,
+    body: web::Bytes,
+) -> ScmResult<HttpResponse> {
+    let (id, old) = path.into_inner();
+    let p = get_project(&state, id)?;
+    let Some(old) = sanitize_media_filename(&old) else {
+        return Err(ScmError::config("Invalid media filename"));
+    };
+    let parsed = json_body(&body)?;
+    let new_name = parsed
+        .get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ScmError::config("Rename payload must contain { name }"))?;
+    let Some(new_name) = sanitize_media_filename(new_name) else {
+        return Err(ScmError::config("Invalid new media filename"));
+    };
+    if new_name == old {
+        return Ok(HttpResponse::Ok().json(json!({ "renamed": old, "url": media_site_url(&state.config().media_dir, &old) })));
+    }
+
+    let media_dir = state.config().media_dir;
+    let dir = media_dir_for(&state, &p).await?;
+    let from = dir.join(&old);
+    let to = dir.join(&new_name);
+    let new_in_task = new_name.clone();
+    tokio::task::spawn_blocking(move || -> ScmResult<()> {
+        if to.exists() {
+            return Err(ScmError::config(format!("'{new_in_task}' already exists")).with_status_conflict());
+        }
+        std::fs::rename(&from, &to).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => ScmError::not_found(format!("Media file '{old}' not found")),
+            _ => ScmError::filesystem("Could not rename media file").with_detail(e.to_string()),
+        })
+    })
+    .await
+    .map_err(|e| ScmError::internal("Media rename task panicked").with_detail(e.to_string()))??;
+
+    let url = media_site_url(&media_dir, &new_name);
+    Ok(HttpResponse::Ok().json(json!({ "renamed": new_name, "url": url })))
 }
 
 // ================== GIT STATUS + PUBLISH ==================
@@ -514,12 +691,18 @@ pub async fn publish(state: Ctx, path: web::Path<String>, body: web::Bytes) -> S
         )));
     }
 
-    // Stage the content directory plus the assets folder when present
-    // (uploaded images live in <checkout>/public/images).
+    // Stage the content directory plus media folders when present
+    // (uploads live in <checkout>/<media_dir>; public/images is the legacy
+    // location kept for backwards compatibility).
     let mut pathspecs = vec![p.content_dir.clone()];
-    let assets_dir = "public/images";
-    if dest.join(assets_dir).is_dir() {
-        pathspecs.push(assets_dir.to_string());
+    let media_dir = state.config().media_dir;
+    let media_norm = media_dir.trim_start_matches("./").trim_end_matches('/').to_string();
+    if !media_norm.is_empty() && dest.join(&media_norm).is_dir() {
+        pathspecs.push(media_norm);
+    }
+    let legacy_assets = "public/images";
+    if dest.join(legacy_assets).is_dir() {
+        pathspecs.push(legacy_assets.to_string());
     }
     let stage_refs: Vec<&str> = pathspecs.iter().map(|s| s.as_str()).collect();
     if let Err(e) = git::stage(&dest, &stage_refs).await {

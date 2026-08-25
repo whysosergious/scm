@@ -8,6 +8,7 @@ import { renderHeaderStatus } from './components/git-status.js';
 import { renderProjectInfo } from './components/project-info.js';
 import { renderProjectSelector } from './components/project-selector.js';
 import { renderEditor } from './components/json-editor.js';
+import { renderMedia } from './components/media.js';
 import { toast, toastError } from './components/toast.js';
 
 const $ = (id) => document.getElementById(id);
@@ -21,12 +22,15 @@ $('toggle-sidebar').addEventListener('click', () => {
 });
 
 // Settings nav toggles the config editor view.
-let settingsActive = false;
 $('nav-settings').addEventListener('click', (e) => {
   e.preventDefault();
-  settingsActive = !settingsActive;
-  $('nav-settings').classList.toggle('active', settingsActive);
-  patch({ view: settingsActive ? 'settings' : 'content' });
+  patch({ view: 'settings' });
+});
+
+// Media nav opens the media manager view.
+$('nav-media').addEventListener('click', (e) => {
+  e.preventDefault();
+  patch({ view: 'media' });
 });
 
 function render() {
@@ -34,7 +38,17 @@ function render() {
   renderContentNav($('content-nav'));
   renderHeaderStatus($('header-status'));
 
+  // nav active states follow the current view
+  const mediaActive = state.view === 'media';
+  const settingsActive = state.view === 'settings';
+  $('nav-media').classList.toggle('active', mediaActive);
+  $('nav-settings').classList.toggle('active', settingsActive);
+
   const root = $('view-root');
+  if (state.view === 'media') {
+    renderMedia(root);
+    return;
+  }
   if (state.view === 'settings') {
     renderConfigEditor(root);
     return;

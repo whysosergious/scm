@@ -370,5 +370,49 @@ async function dragRow(sourceRow,target){
    if(!rte.value.includes('<img src="https://example.com/pic.jpg"')) throw new Error('html img missing');
  });
 
+ // ── Media manager phases ──────────────────────────────────────────
+
+ await phase('media nav opens media view', async () => {
+   const nav = $q('#nav-media');
+   if (!nav) throw new Error('media nav missing');
+   nav.click(); await sleep(300);
+   if (!$q('.media-view')) throw new Error('media view not rendered');
+   if (!$q('.media-toolbar')) throw new Error('toolbar missing');
+   if (!$q('.media-mode-switch')) throw new Error('mode switch missing');
+ });
+
+ await phase('media view modes switch', async () => {
+   const btns = $$('.media-mode-btn');
+   if (btns.length !== 4) throw new Error('expected 4 mode buttons');
+   for (const btn of btns) {
+     btn.click(); await sleep(100);
+     const container = $q('.media-container');
+     if (!container) throw new Error('container missing after mode switch');
+   }
+   // reset to small grid
+   btns[0].click(); await sleep(100);
+ });
+
+ await phase('media empty state shown', async () => {
+   const empty = $q('.media-empty');
+   if (!empty) throw new Error('empty state missing');
+   if (!empty.textContent.includes('No media files')) throw new Error('wrong empty text');
+ });
+
+ await phase('media upload button opens file picker', async () => {
+   const uploadBtn = $$('.btn-primary').find(b => b.textContent.includes('Upload'));
+   if (!uploadBtn) throw new Error('upload button missing');
+   // click triggers fileInput.click() — verify the input exists
+   const inputs = $$('input[type="file"]');
+   if (!inputs.some(i => i.accept === 'image/*')) throw new Error('file input missing');
+ });
+
+ await phase('content nav switches away from media', async () => {
+   const contentItem = $$('#content-nav .nav-item').find(a => a.textContent.includes('posts.json'));
+   if (!contentItem) throw new Error('content nav item missing');
+   contentItem.click(); await sleep(300);
+   if ($q('.media-view')) throw new Error('media view still visible');
+ });
+
  paint();
 })();

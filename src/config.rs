@@ -11,11 +11,16 @@ use std::path::{Path, PathBuf};
 
 pub const CONFIG_FILE: &str = "scm-config.json";
 pub const SUPPORTED_CONFIG_VERSION: u32 = 1;
+pub const DEFAULT_MEDIA_DIR: &str = "./public/media/";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub config_version: u32,
     pub projects_dir: String,
+    /// Target-checkout-relative folder for uploaded media. Optional;
+    /// defaults to ./public/media/.
+    #[serde(default = "default_media_dir")]
+    pub media_dir: String,
     #[serde(default)]
     pub projects: Vec<ProjectConfig>,
     /// Unknown top-level keys, preserved across load/save round-trips (spec §10).
@@ -37,6 +42,10 @@ pub struct ProjectConfig {
 
 pub fn default_path() -> PathBuf {
     PathBuf::from(CONFIG_FILE)
+}
+
+fn default_media_dir() -> String {
+    DEFAULT_MEDIA_DIR.to_string()
 }
 
 impl AppConfig {
@@ -78,6 +87,8 @@ impl AppConfig {
         }
         paths::validate_relative(&self.projects_dir)
             .map_err(|e| ScmError::config(format!("Invalid projects_dir: {e}")))?;
+        paths::validate_relative(&self.media_dir)
+            .map_err(|e| ScmError::config(format!("Invalid media_dir: {e}")))?;
 
         let mut seen_ids: HashSet<&str> = HashSet::new();
         for project in &self.projects {

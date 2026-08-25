@@ -105,7 +105,11 @@ All endpoints are JSON under `/api` (errors shaped as
 | GET/POST | `/api/projects/{id}/content` | list / create `.json` file |
 | GET/PUT | `/api/projects/{id}/content/{name}` | load / save |
 | GET | `/api/projects/{id}/git/status` | parsed status |
-| POST | `/api/projects/{id}/assets` | upload image → `public/images/` |
+| GET | `/api/projects/{id}/media` | list media files |
+| GET | `/api/projects/{id}/media/{name}` | serve media file |
+| POST | `/api/projects/{id}/media` | upload media (raw bytes) |
+| POST | `/api/projects/{id}/media/{name}/rename` | rename (409 on conflict) |
+| DELETE | `/api/projects/{id}/media/{name}` | delete media |
 | POST | `/api/projects/{id}/publish` | stage → commit → push |
 
 ## Development

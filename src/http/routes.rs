@@ -30,7 +30,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .service(api::get_content_file)
                 .service(api::put_content_file)
                 .service(api::git_status)
-                .service(api::upload_asset)
+                .service(api::list_media)
+                .service(api::serve_media)
+                .service(api::upload_media)
+                .service(api::rename_media)
+                .service(api::delete_media)
                 .service(api::publish),
         );
 }

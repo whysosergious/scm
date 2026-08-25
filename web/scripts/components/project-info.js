@@ -22,7 +22,7 @@ const OUTCOME_STYLE = {
 export function renderProjectInfo(root) {
   const project = selectedProject();
   if (!project) return;
-  if (state.view !== 'content') return;
+  if (state.view === 'settings') return;
 
   const box = el('div', { class: 'field-item info-panel' });
   const content = el('div', { class: 'field-content' });

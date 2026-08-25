@@ -102,6 +102,7 @@ The configuration file is `scm-config.json` at the SCM repository root.
 {
   "config_version": 1,
   "projects_dir": "projects",
+  "media_dir": "./public/media/",
   "projects": [
     {
       "id": "wss-index",
@@ -121,6 +122,10 @@ An integer identifying the configuration format version. The only supported valu
 ### `projects_dir`
 
 Path to the directory containing local project checkouts, relative to the SCM working directory. Absolute paths and `..` traversal are rejected.
+
+### `media_dir`
+
+Target-checkout-relative folder for uploaded media. Defaults to `./public/media/` when absent. Must be a relative path (same rules as `projects_dir` / `content_dir`). Resolved against the target project checkout so media files are versioned and published with it. See `spec_media_managment.json` for the full media management specification.
 
 ### `projects`
 
@@ -269,9 +274,9 @@ Toolbar (format-aware — HTML-only controls are hidden in Markdown mode):
 Current, two insert paths:
 
 - **By URL** — prompt for URL + alt text; for external or already-hosted images.
-- **By upload** — a file picker uploads the image via `POST /api/projects/{id}/assets?filename=…` into the checkout's `public/images/` folder (created on demand; name deduplicated as `name-2.ext`, `name-3.ext`, …; extension allow-list: png jpg jpeg gif webp svg avif ico bmp; max 20 MB; path segments outside the folder are stripped). The editor inserts the site-relative URL `/public/images/<name>.ext`, so the target website renders the image directly and the file is versioned with the content — publishing stages `public/images` together with the content directory.
+- **By upload** — a file picker uploads the image via `POST /api/projects/{id}/media?filename=…` into the checkout's `media_dir` folder (created on demand; name deduplicated as `name-2.ext`, `name-3.ext`, …; extension allow-list: png jpg jpeg gif webp svg avif ico bmp; max 20 MB). The editor inserts the site-relative URL `/<media_dir>/<name>.ext`, so the target website renders the image directly and the file is versioned with the content — publishing stages `media_dir` together with the content directory.
 
-Future options: paste/drop upload routed through the same endpoint; a media library sidebar for browsing/re-using uploaded assets; external embeds (YouTube/Vimeo etc.) as a separate node type.
+Future options: paste/drop upload routed through the same endpoint; external embeds (YouTube/Vimeo etc.) as a separate node type.
 
 ### 9.6 Collapse
 
@@ -292,12 +297,12 @@ The control panel edits the complete `scm-config.json` as raw pretty JSON: clien
 
 ## 11. Git publishing
 
-Publishing stages **only the configured content directory**, then commits and pushes the configured branch:
+Publishing stages **the configured content directory** and **media directory** (when present), then commits and pushes the configured branch:
 
 ```text
 Edit content → validate JSON → save locally → stage content dir
-(+ `public/images` when present) → commit (default message "Update content")
-→ push origin <branch>
+(+ media_dir when present; + public/images for backwards compatibility)
+→ commit (default message "Update content") → push origin <branch>
 ```
 
 The publish endpoint returns HTTP 200 with a discriminated `outcome` covering every case: `no_changes`, `committed_and_pushed`, `commit_failed`, `push_failed`, `auth_failed`, `remote_rejected` (non-fast-forward), `merge_conflict`, `git_missing`, `invalid_repo`. The UI renders each outcome distinctly and offers retry. Local content is never deleted or reverted when a Git operation fails.
@@ -318,7 +323,11 @@ The Rust application serves the control panel from `web/` and a JSON API under `
 | GET/POST | `/api/projects/{id}/content` | list `.json` entries / create file |
 | GET/PUT | `/api/projects/{id}/content/{name}` | load raw / validate + save |
 | GET | `/api/projects/{id}/git/status` | parsed porcelain status |
-| POST | `/api/projects/{id}/assets` | upload image into `public/images` |
+| GET | `/api/projects/{id}/media` | list media files |
+| GET | `/api/projects/{id}/media/{name}` | serve media file (raw) |
+| POST | `/api/projects/{id}/media` | upload media (raw bytes, dedup) |
+| POST | `/api/projects/{id}/media/{name}/rename` | rename media (409 on conflict) |
+| DELETE | `/api/projects/{id}/media/{name}` | delete media file |
 | POST | `/api/projects/{id}/publish` | stage → commit → push |
 
 Errors use `{"error": {category, message, detail}}` with categories `config`, `invalid-json`, `not-found`, `git`, `filesystem`, `network-remote`, `internal`. API responses carry `Cache-Control: no-store` so the panel always reflects disk.
@@ -365,7 +374,7 @@ Errors are user-readable with technical detail kept for the log, shaped as `{"er
 
 ## 16. Out of scope
 
-Still postponed: content schemas and schema-driven validation, multi-select drag, keyboard-based drag alternatives, undo/redo history for form edits (Cancel restores from disk), media/image management, image upload processing, user authentication, multi-user access, remote/hosted SCM operation, FTP/SFTP publishing, deployment-provider plugins, automatic npm installs on the target site, automatic target-site builds, production packaging, public API authentication.
+Still postponed: content schemas and schema-driven validation, multi-select drag, keyboard-based drag alternatives, undo/redo history for form edits (Cancel restores from disk), full file explorer, image upload processing (format conversion, resizing), user authentication, multi-user access, remote/hosted SCM operation, FTP/SFTP publishing, deployment-provider plugins, automatic npm installs on the target site, automatic target-site builds, production packaging, public API authentication.
 
 ## 17. Success criteria
 

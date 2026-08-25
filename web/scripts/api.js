@@ -66,6 +66,25 @@ export const api = {
     request('POST', `/api/projects/${encodeURIComponent(id)}/content`, json({ name, initial })),
 
   gitStatus: (id) => request('GET', `/api/projects/${encodeURIComponent(id)}/git/status`),
+
+  listMedia: (id) => request('GET', `/api/projects/${encodeURIComponent(id)}/media`),
+  serveMediaUrl: (id, name) => `/api/projects/${encodeURIComponent(id)}/media/${encodeURIComponent(name)}`,
+  deleteMedia: (id, name) => request('DELETE', `/api/projects/${encodeURIComponent(id)}/media/${encodeURIComponent(name)}`),
+  renameMedia: (id, oldName, newName) =>
+    request('POST', `/api/projects/${encodeURIComponent(id)}/media/${encodeURIComponent(oldName)}/rename`, JSON.stringify({ name: newName })),
+  uploadMedia: async (id, file) => {
+    const res = await fetch(`/api/projects/${encodeURIComponent(id)}/media?filename=${encodeURIComponent(file.name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+    if (!res.ok) {
+      let err = { message: `Upload failed (${res.status})` };
+      try { const p = await res.json(); if (p?.error) err = p.error; } catch (_) {}
+      throw new ApiError(err.category || 'filesystem', err.message || 'Upload failed', err.detail);
+    }
+    return res.json();
+  },
   publish: (id, message) =>
     request(
       'POST',

@@ -43,19 +43,19 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(state.clone()))
             .configure(routes::configure)
-            // API responses must never be cached by the browser: the control
-            // panel always reflects what is on disk (content edits, config
-            // swaps). Static assets under /web keep default caching.
+            // Nothing may be cached by the browser: the panel must always
+            // reflect what is on disk. Stale shells (index.html) break
+            // API-coupled frontends, and stale API responses show old
+            // content after edits. Everything is local — caching buys
+            // nothing.
             .wrap_fn(|req, srv| {
                 let fut = srv.call(req);
                 async move {
                     let mut res = fut.await?;
-                    if res.request().path().starts_with("/api") {
-                        res.headers_mut().insert(
-                            CACHE_CONTROL,
-                            HeaderValue::from_static("no-store"),
-                        );
-                    }
+                    res.headers_mut().insert(
+                        CACHE_CONTROL,
+                        HeaderValue::from_static("no-store"),
+                    );
                     Ok(res)
                 }
             })

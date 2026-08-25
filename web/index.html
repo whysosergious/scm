@@ -23,24 +23,54 @@
       <nav class="sidebar" id="sidebar">
         <div class="sidebar-header">
           <a class="logo" href="/" title="SCM — Static Content Manager">
-            <svg class="logo-mark" viewBox="0 0 24 24" width="26" height="26" fill="none"
-                 stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
-                 role="img" aria-label="SCM logo">
+            <svg
+              class="logo-mark"
+              viewBox="0 0 24 24"
+              width="26"
+              height="26"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              role="img"
+              aria-label="SCM logo"
+            >
               <!-- JSON braces -->
-              <path d="M8.6 3.5c-2.1 0-3 .95-3 2.8v2.2c0 1.7-.75 2.75-2.35 3.1 1.6.35 2.35 1.4 2.35 3.1v2.2c0 1.85.9 2.8 3 2.8"/>
-              <path d="M15.4 3.5c2.1 0 3 .95 3 2.8v2.2c0 1.7.75 2.75 2.35 3.1-1.6.35-2.35 1.4-2.35 3.1v2.2c0 1.85-.9 2.8-3 2.8"/>
+              <path
+                d="M8.6 3.5c-2.1 0-3 .95-3 2.8v2.2c0 1.7-.75 2.75-2.35 3.1 1.6.35 2.35 1.4 2.35 3.1v2.2c0 1.85.9 2.8 3 2.8"
+              />
+              <path
+                d="M15.4 3.5c2.1 0 3 .95 3 2.8v2.2c0 1.7.75 2.75 2.35 3.1-1.6.35-2.35 1.4-2.35 3.1v2.2c0 1.85-.9 2.8-3 2.8"
+              />
               <!-- commit + push -->
-              <circle cx="12" cy="6.6" r="1.5" fill="currentColor" stroke="none"/>
-              <path d="M12 8.4v8.2"/>
-              <path d="M9.6 14.2 12 16.9l2.4-2.7"/>
+              <circle
+                cx="12"
+                cy="6.6"
+                r="1.5"
+                fill="currentColor"
+                stroke="none"
+              />
+              <path d="M12 8.4v8.2" />
+              <path d="M9.6 14.2 12 16.9l2.4-2.7" />
             </svg>
             <span class="logo-text">SCM</span>
           </a>
-          <button class="toggle-sidebar" id="toggle-sidebar" title="Collapse sidebar">
+          <button
+            class="toggle-sidebar"
+            id="toggle-sidebar"
+            title="Collapse sidebar"
+          >
             <span class="material-symbols-outlined">chevron_left</span>
           </button>
         </div>
-        <div class="sidebar-nav" id="content-nav"></div>
+        <div class="sidebar-nav">
+          <a class="nav-item" id="nav-media" href="#" title="Media">
+            <span class="material-symbols-outlined">image</span>
+            <span>Media</span>
+          </a>
+          <div id="content-nav"></div>
+        </div>
         <div class="sidebar-footer">
           <a class="nav-item" href="#" id="nav-settings">
             <span class="material-symbols-outlined">settings</span>

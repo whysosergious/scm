@@ -367,7 +367,7 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
         const rte = document.createElement('rich-text-editor');
         const project = selectedProject();
         rte.setAttribute('format', richFormatFor(node.value));
-        if (project) rte.setAttribute('upload-url', `/api/projects/${encodeURIComponent(project.id)}/assets`);
+        if (project) rte.setAttribute('upload-url', `/api/projects/${encodeURIComponent(project.id)}/media`);
         rte.setAttribute('value', node.value ?? '');
         rte.addEventListener('input', () => {
           node.value = rte.value;

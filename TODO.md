@@ -142,6 +142,20 @@ headlessly plus full manual smoke at `/`.
 
 ---
 
+## Media management (per spec_media_managment.json)
+
+- [x] M1 — config `media_dir` (default `./public/media/`, validated) + backend:
+  list / serve / upload / rename / delete under `/api/projects/{id}/media`;
+  uploads land in `media_dir`; publish stages it; `/assets` superseded.
+- [x] M2 — sidebar **Media** button + manager view: upload button, four view
+  modes (small grid / large grid / list-medium / list-small, persisted),
+  item actions (copy link, rename w/ 409 handling, delete).
+- [x] M3 — lightbox viewer: arrows + keyboard + swipe navigation, ×/Esc/up-
+  swipe close, bottom action bar; ProseMirror upload switched to `media_dir`.
+- [ ] M4 — e2e phases (upload/list/rename/delete/viewer) + docs sync.
+
+---
+
 ## Explicitly out of scope
 
 Schemas/schema-driven validation, rich-text editing, multi-select drag,
