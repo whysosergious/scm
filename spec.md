@@ -251,6 +251,30 @@ Rules:
 - Switching modes never destroys data: the raw string carries over.
 - The value is always a plain JSON string, so static sites consume it directly and no server-side changes are required.
 
+### 9.5.1 Rich text editor features
+
+Toolbar (format-aware — HTML-only controls are hidden in Markdown mode):
+
+- Undo/redo; block types: paragraph, headings 1–4 (also `Ctrl+Alt+0..4`).
+- Marks: bold, italic, underline (HTML), strikethrough (`~~…~~` round-trips in Markdown via a custom markdown-it rule), inline code.
+- Blocks: bullet & ordered lists, blockquote, code block, horizontal rule, hard line break (`Shift+Enter`).
+- **Links** (`Ctrl+K`): prompt for URL, remove by clearing it.
+- **Images**: insert by URL + alt text; rendered between paragraphs, selectable, round-trips as `<img src alt>` (HTML) or `![alt](src)` (Markdown).
+- Text alignment (left/center/right/justify) — HTML format only.
+- Markdown-style input rules while typing (`# `, `> `, `- `, `1. `, ``` ``` ```), smart quotes, ellipsis and em-dash replacement; `linkify` for bare URLs.
+- Placeholder text for empty documents; live word/character count.
+
+### 9.5.2 Images — current approach and roadmap
+
+Current: images are inserted **by URL** (prompt for URL + alt text) and stored inline in the string value, so the target website renders them directly.
+
+Planned options, in recommended order:
+
+1. **Upload to the content dir** — a small backend endpoint (`POST /api/projects/{id}/assets`) storing files under a configured assets folder of the checkout and returning a relative URL; keeps the site self-contained and the images versioned with the content. Requires a spec amendment (media handling was out of scope).
+2. **Paste/drop upload** — intercept image paste/drop in the editor and route it through (1) automatically.
+3. **Media library sidebar** — browse uploaded assets, pick or re-use.
+4. **External embeds** (YouTube/Vimeo etc.) — separate embed node type.
+
 ### 9.6 Collapse
 
 Every non-root row collapses via its chevron to a single head row. Collapsed object/array rows show `(n items)` with the direct child count. Collapse state is per node id and resets when the file is reloaded or re-parsed from the JSON tab. Newly added nodes render expanded, with object copies/names focused for immediate renaming.

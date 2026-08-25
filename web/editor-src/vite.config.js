@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   build: {
     outDir: '../scripts/vendor',
+    minify: false,
     emptyOutDir: false,
     lib: {
       entry: 'src/main.js',

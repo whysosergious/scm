@@ -17,7 +17,8 @@ Built with Rust (Actix Web + Tokio) and vanilla HTML/CSS/JS ES modules.
   drag-and-drop reorder — including across containers.
 - **Three string editor modes** — single-line input, auto-growing text field,
   and a rich text editor (ProseMirror) with autodetected HTML/Markdown
-  round-tripping.
+  round-tripping. Rich mode covers headings, lists, quotes, code blocks,
+  links, images, rules, alignment, smart typography and more.
 - **Raw JSON mode** — plain-text editing with syntax validation; form edits
   and JSON edits stay in sync.
 - **Git publishing** — one click stages the content directory, commits, and

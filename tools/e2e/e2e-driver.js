@@ -17,7 +17,9 @@ const rowByName=k=>allRows().find(r=>headInput(r)?.value===k);
 const rootRows=()=>$$('#form-root-list > .field-item.prop-row');
 const ownList=row=>$q('.prop-body > .nested-container',row);
 const kidRows=list=>[...list.children].filter(c=>c.classList.contains('prop-row'));
-async function dragRow(sourceRow,targetY){
+async function dragRow(sourceRow,target){
+  // target: number (viewport y) or function (re-evaluated after activation,
+  // because hiding the source row shifts the layout).
   const handle=$q('.drag-handle',sourceRow);
   const h=handle.getBoundingClientRect();
   const sx=h.left+8, sy=h.top+8;
@@ -26,11 +28,13 @@ async function dragRow(sourceRow,targetY){
   window.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,clientX:sx,clientY:sy+12}));
   await sleep(40);
   for(let i=1;i<=8;i++){
+    const ty = typeof target==='function' ? target() : target;
     window.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,
-      clientX:sx+260*(i/8), clientY:sy+12+(targetY-(sy+12))*(i/8)}));
+      clientX:sx+260*(i/8), clientY:sy+12+(ty-(sy+12))*(i/8)}));
     await sleep(30);
   }
-  window.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,clientX:sx+260,clientY:targetY}));
+  const ty = typeof target==='function' ? target() : target;
+  window.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,clientX:sx+260,clientY:ty}));
   await sleep(180);
 }
 
@@ -180,7 +184,7 @@ async function dragRow(sourceRow,targetY){
  await phase('drag sibling reorder at root (upward)', async ()=>{
    const website=rowByName('website');
    website.scrollIntoView({block:'center'}); await sleep(100);
-   await dragRow(rowByName('posts'), website.getBoundingClientRect().top+6);
+   await dragRow(rowByName('posts'), () => rowByName('website').getBoundingClientRect().top+6);
    const names=rootRows().map(r=>headInput(r)?.value);
    if(names.join(',')!=='posts,website') throw new Error('order: '+names.join(','));
  });
@@ -189,25 +193,35 @@ async function dragRow(sourceRow,targetY){
    const posts=rowByName('posts');
    posts.scrollIntoView({block:'center'}); await sleep(100);
    const wr=rowByName('website').getBoundingClientRect();
-   await dragRow(posts, wr.bottom-4);
+   await dragRow(posts, () => rowByName('website').getBoundingClientRect().bottom-4);
    const names=rootRows().map(r=>headInput(r)?.value);
    if(names.join(',')!=='website,posts') throw new Error('order: '+names.join(','));
  });
 
  await phase('drag cross-parent into object', async ()=>{
-   const posts=rowByName('posts');
-   const entry=kidRows(ownList(posts))[0];
-   const innerId=kidRows(ownList(entry)).find(r=>$q('.title-input',r)?.value==='id');
-   let website=rowByName('website');
-   let wbody=$q('.prop-body',website);
-   if(getComputedStyle(wbody).display==='none'){ $q('.chevron-btn',website).click(); await sleep(150); }
-   website=rowByName('website'); wbody=$q('.prop-body',website);
-   const nameRow=$$('.field-item.prop-row',wbody).find(r=>$q('.title-input',r)?.value==='name');
-   nameRow.scrollIntoView({block:'center'}); await sleep(100);
-   await dragRow(innerId, nameRow.getBoundingClientRect().bottom+5);
-   website=rowByName('website'); wbody=$q('.prop-body',website);
-   if(!$$q('.title-input',wbody).map(i=>i.value).includes('id')) throw new Error('not moved');
-   if($$('.title-input',$q('.prop-body',rowByName('posts'))).some(i=>i.value==='id')) throw new Error('duplicated');
+   const findIdRow=()=>$$q('.field-item.prop-row').find(r=>$q(':scope > .field-content > .head-row .name-cell > .title-input',r)?.value==='id');
+   for (let attempt=1; attempt<=3; attempt++) {
+     const idRow=findIdRow();
+     if(!idRow) throw new Error('id row missing');
+     let website=rowByName('website');
+     let wbody=$q('.prop-body',website);
+     if(getComputedStyle(wbody).display==='none'){ $q('.chevron-btn',website).click(); await sleep(150); }
+     website=rowByName('website'); wbody=$q('.prop-body',website);
+     const nameRow=$$('.field-item.prop-row',wbody).find(r=>$q('.title-input',r)?.value==='name');
+     nameRow.scrollIntoView({block:'center'}); await sleep(150);
+     await dragRow(idRow, nameRow.getBoundingClientRect().bottom+5);
+     await sleep(250);
+     website=rowByName('website'); wbody=$q('.prop-body',website);
+     const keys=$$q('.title-input',wbody).map(i=>i.value);
+     if(keys.includes('id')) return;
+     // diagnostics: where did id land?
+     const idNow=findIdRow();
+     const chain=[];
+     let el=idNow;
+     while(el){ if(el.dataset && el.dataset.parentId) chain.push(el.dataset.parentId); el=el.parentElement; }
+     results.push(`  retry ${attempt}: id ancestors=[${chain.join(',')}], keys=[${keys.join(',')}]`);
+   }
+   throw new Error('id not moved into website after retries');
  });
 
  await phase('json tab reflects form edits', async ()=>{
@@ -267,6 +281,91 @@ async function dragRow(sourceRow,targetY){
    await sleep(150);
    const src=rte.value;
    if(src.includes('<p>')||!src.includes('[a link]')) throw new Error('md round-trip broken: '+src.slice(0,80));
+ });
+
+ await phase('rich editor markdown toolbar + features', async ()=>{
+   // plain 'Demo' → markdown-format editor (19 buttons, no underline/align)
+   let website=rowByName('website');
+   let nameRow=$$('.field-item.prop-row',$q('.prop-body',website))
+     .find(r=>$q('.title-input',r)?.value==='name');
+   $$('.mode-btn',nameRow).find(b=>b.title==='Rich text').click();
+   await sleep(700);
+   website=rowByName('website');
+   nameRow=$$('.field-item.prop-row',$q('.prop-body',website))
+     .find(r=>$q('.title-input',r)?.value==='name');
+   const rte=$q('rich-text-editor',nameRow);
+   if(!rte) throw new Error('rte missing');
+   if(rte.getAttribute('format')!=='markdown') throw new Error('expected md format');
+   const toolbar=$$('.rte-btn',rte);
+   if(toolbar.length!==19) throw new Error('md toolbar size: '+toolbar.length);
+   if(toolbar.some(b=>b.title.includes('Underline')||b.title.includes('Align'))) throw new Error('html-only buttons in md mode');
+   if(!$q('.rte-count',rte)) throw new Error('no word count');
+   const mdBtn=(title)=>{ const b=toolbar.find(x=>x.title.startsWith(title)); if(!b) throw new Error('missing btn: '+title); return b; };
+
+   // H2 via toolbar + programmatic text
+   rte.querySelector('.ProseMirror').focus();
+   mdBtn('Heading 2').click(); await sleep(80);
+   rte.insertText('About us');
+   await sleep(120);
+   if(!$q('.ProseMirror h2',rte)) throw new Error('H2 not created');
+
+   // image via stubbed prompt → markdown serialization
+   window.prompt=(msg)=>msg.includes('Alt')?'logo alt':'https://example.com/logo.png';
+   mdBtn('Insert image').click(); await sleep(150);
+   if(!$q('.ProseMirror img',rte)) throw new Error('image node missing');
+   if(!rte.value.includes('![logo alt](https://example.com/logo.png)')) throw new Error('md image missing: '+rte.value.slice(0,120));
+
+   // strike via toolbar → ~~
+   mdBtn('Strikethrough').click(); await sleep(60);
+   rte.insertText('old news');
+   await sleep(120);
+   if(!rte.value.includes('~~old news~~')) throw new Error('strike md missing: '+rte.value.slice(-80));
+ });
+
+ await phase('rich editor html-only features', async ()=>{
+   // feed HTML through textarea → rich editor must build with html format
+   let website=rowByName('website');
+   let nameRow=$$('.field-item.prop-row',$q('.prop-body',website))
+     .find(r=>$q('.title-input',r)?.value==='name');
+   $$('.mode-btn',nameRow).find(b=>b.title==='Resizable text field').click();
+   await sleep(200);
+   website=rowByName('website');
+   nameRow=$$('.field-item.prop-row',$q('.prop-body',website))
+     .find(r=>$q('.title-input',r)?.value==='name');
+   let ta=$q('textarea.value-input',nameRow);
+   ta.value='<p>About us</p>';
+   ta.dispatchEvent(new Event('input',{bubbles:true}));
+   await sleep(120);
+   website=rowByName('website');
+   nameRow=$$('.field-item.prop-row',$q('.prop-body',website))
+     .find(r=>$q('.title-input',r)?.value==='name');
+   $$('.mode-btn',nameRow).find(b=>b.title==='Rich text').click();
+   await sleep(700);
+   website=rowByName('website');
+   nameRow=$$('.field-item.prop-row',$q('.prop-body',website))
+     .find(r=>$q('.title-input',r)?.value==='name');
+   const rte=$q('rich-text-editor',nameRow);
+   if(!rte||rte.getAttribute('format')!=='html') throw new Error('html format not detected');
+   const toolbar=$$('.rte-btn',rte);
+   if(toolbar.length!==24) throw new Error('html toolbar size: '+toolbar.length);
+   const htmlBtn=(title)=>{ const b=toolbar.find(x=>x.title.startsWith(title)); if(!b) throw new Error('missing btn: '+title); return b; };
+
+   // underline (html only)
+   rte.querySelector('.ProseMirror').focus();
+   htmlBtn('Underline').click(); await sleep(60);
+   rte.insertText('u-text');
+   await sleep(120);
+   if(!$q('.ProseMirror u',rte)) throw new Error('underline missing');
+   if(!rte.value.includes('<u>u-text</u>')) throw new Error('u not serialized: '+rte.value.slice(-80));
+
+   // alignment
+   htmlBtn('Align center').click(); await sleep(80);
+   if(!$q('.ProseMirror p[style*="center"], .ProseMirror [style*="text-align: center"]',rte)) throw new Error('align center failed');
+
+   // image via stubbed prompt → <img>
+   window.prompt=(msg)=>msg.includes('Alt')?'pic alt':'https://example.com/pic.jpg';
+   htmlBtn('Insert image').click(); await sleep(150);
+   if(!rte.value.includes('<img src="https://example.com/pic.jpg"')) throw new Error('html img missing');
  });
 
  paint();
