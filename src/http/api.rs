@@ -363,7 +363,7 @@ pub async fn preview_page(
     path: web::Path<(String, String)>,
 ) -> ScmResult<HttpResponse> {
     let (id, name) = path.into_inner();
-    let p = get_project(&state, id)?;
+    let p = get_project(&state, id.clone())?;
     let dest = project::checkout_path(&state.projects_root(), &p.id)?;
 
     let html_name = name.trim_end_matches(".json").to_string() + ".html";
@@ -384,6 +384,18 @@ pub async fn preview_page(
                 ScmError::filesystem("Could not read generated HTML").with_detail(e.to_string())
             }
         })?;
+
+    // Inject <base> so relative URLs (images, links) resolve from the
+    // checkout root instead of the preview endpoint URL.
+    let base_href = format!(
+        "/files/{}/",
+        id,
+    );
+    let html = html.replacen(
+        "<head>",
+        &format!("<head>\n  <base href=\"{}\">", base_href),
+        1,
+    );
 
     Ok(HttpResponse::Ok()
         .insert_header((header::CONTENT_TYPE, "text/html"))
@@ -566,6 +578,53 @@ pub async fn serve_media(state: Ctx, path: web::Path<(String, String)>) -> ScmRe
     };
     Ok(HttpResponse::Ok()
         .content_type(media_content_type(&normalized))
+        .body(bytes))
+}
+
+/// Serve a file from the checkout root (for page preview relative URLs).
+/// Route: GET /files/{id}/{path:.*}
+#[get("/files/{id}/{path:.*}")]
+pub async fn serve_checkout_file(
+    state: Ctx,
+    path: web::Path<(String, String)>,
+) -> ScmResult<HttpResponse> {
+    let (id, rel) = path.into_inner();
+    let p = get_project(&state, id)?;
+    let dest = project::checkout_path(&state.projects_root(), &p.id)?;
+
+    // Reject traversal
+    if rel.contains("..") {
+        return Err(ScmError::config("Path escapes the checkout"));
+    }
+
+    let file = dest.join(&rel);
+    let bytes = tokio::fs::read(&file).await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            ScmError::not_found(format!("File not found: {rel}"))
+        } else {
+            ScmError::filesystem("Could not read file").with_detail(e.to_string())
+        }
+    })?;
+
+    let ct = match file.extension().and_then(|e| e.to_str()) {
+        Some("html") | Some("htm") => "text/html",
+        Some("css") => "text/css",
+        Some("js") => "application/javascript",
+        Some("json") => "application/json",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("svg") => "image/svg+xml",
+        Some("webp") => "image/webp",
+        Some("ico") => "image/x-icon",
+        Some("woff") => "font/woff",
+        Some("woff2") => "font/woff2",
+        Some("ttf") => "font/ttf",
+        _ => "application/octet-stream",
+    };
+
+    Ok(HttpResponse::Ok()
+        .insert_header((header::CONTENT_TYPE, ct))
         .body(bytes))
 }
 

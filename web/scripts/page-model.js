@@ -19,9 +19,9 @@ export function canNest(parentType, parentElement, childType, childElement) {
 
   switch (parentType) {
     case 'box':
-      // Flow containers accept Box and Text(span)
+      // Flow containers accept Box and Text (any element)
       if (childType === 'box') return true;
-      if (childType === 'text' && childElement === 'span') return true;
+      if (childType === 'text') return true;
       return false;
 
     case 'text': {

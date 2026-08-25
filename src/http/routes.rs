@@ -16,6 +16,7 @@ async fn index() -> impl Responder {
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(Files::new("/web", "./web").index_file("index.html"))
         .service(index)
+        .service(api::serve_checkout_file)
         .service(
             web::scope("/api")
                 .service(api::get_config)

@@ -7,7 +7,7 @@ import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
 import { patch, refreshGitStatus, refreshPages, selectedProject, state } from '../state.js';
 import { renderPalette } from './page-palette.js';
-import { renderCanvas, setupCanvasDragDrop } from './page-canvas.js';
+import { renderCanvas, setupCanvasDragDrop, setProjectId } from './page-canvas.js';
 import { renderInspector } from './page-inspector.js';
 import { toast, toastError } from './toast.js';
 
@@ -132,6 +132,7 @@ function renderEditor(root, project) {
   root.append(wrap);
 
   // Set up canvas drag/drop listeners once (not on every re-render)
+  setProjectId(project.id);
   setupCanvasDragDrop(canvasEl, () => doc, selectNode, onAddNode);
 
   // State
@@ -146,7 +147,7 @@ function renderEditor(root, project) {
     selectedNodeId = id;
     renderInspector(inspectorEl, doc, id, onNodeChange);
     // Update canvas selection
-    canvasEl.querySelectorAll('.page-node').forEach((n) => {
+    canvasEl.querySelectorAll('.canvas-page-node').forEach((n) => {
       n.classList.toggle('selected', n.dataset.nodeId === id);
     });
   }
@@ -154,6 +155,7 @@ function renderEditor(root, project) {
   function onNodeChange() {
     markDirty(true);
     renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+    requestAnimationFrame(() => syncAllOverlays(canvasEl));
   }
 
   function onDrop(nodeId, targetParentId, index) {

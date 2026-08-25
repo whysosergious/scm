@@ -1168,16 +1168,13 @@ input[type="text"].title-input.invalid {
 /* Canvas */
 .page-canvas {
   padding: 16px;
-  overflow-y: auto;
+  overflow: auto;
   background: var(--color-surface-variant);
+  position: relative;
 }
 
 .canvas-label {
   margin-bottom: 8px;
-}
-
-.canvas-tree {
-  min-height: 100%;
 }
 
 .page-canvas-empty {
@@ -1188,103 +1185,157 @@ input[type="text"].title-input.invalid {
   min-height: 200px;
 }
 
-.page-node {
+/* Page layer: the actual rendered page */
+.canvas-page-layer {
   position: relative;
-  border: 1px solid transparent;
+  min-height: 200px;
+  background: #fff;
   border-radius: var(--radius);
-  margin: 2px 0;
-  transition: border-color 0.15s;
+  padding: 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
 }
 
-.page-node.selected {
-  border-color: var(--color-primary);
-  background: var(--color-primary-container);
+/* Page nodes: actual rendered elements */
+.canvas-page-node {
+  min-height: 1em;
+  position: relative;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color 0.1s;
+  cursor: pointer;
 }
 
-.page-node:hover:not(.selected) {
-  border-color: var(--color-outline-variant);
+/* Hover indicator: only on directly hovered element */
+.canvas-page-node.canvas-hovered:not(.selected):not(.dragging) {
+  outline-color: rgba(66, 133, 244, 0.4);
 }
 
-.page-node-header {
+.canvas-page-node.canvas-hovered:not(.selected):not(.dragging)::after {
+  content: attr(data-element);
+  position: absolute;
+  top: -18px;
+  left: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(66, 133, 244, 0.85);
+  color: #fff;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 5;
+}
+
+/* Selected indicator */
+.canvas-page-node.selected {
+  outline-color: var(--color-primary);
+}
+
+/* Selected label */
+.canvas-page-node.selected::after {
+  content: attr(data-element);
+  position: absolute;
+  top: -18px;
+  left: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--color-primary);
+  color: #fff;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 5;
+}
+
+/* Dragging state */
+.canvas-page-node.dragging {
+  opacity: 0.3;
+  outline-color: transparent;
+}
+
+/* Empty box: drop target hint */
+.canvas-page-node.canvas-empty-box {
+  min-height: 48px;
+  border: 2px dashed var(--color-outline-variant);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.canvas-page-node.canvas-empty-box::before {
+  content: 'Drop here';
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+  pointer-events: none;
+}
+
+/* Drop target indicators */
+.canvas-page-node.drop-target {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.canvas-page-node.drop-before {
+  outline-color: var(--color-primary);
+  box-shadow: 0 -2px 0 0 var(--color-primary);
+}
+
+.canvas-page-node.drop-after {
+  outline-color: var(--color-primary);
+  box-shadow: 0 2px 0 0 var(--color-primary);
+}
+
+.canvas-page-node.drop-inside {
+  outline-color: var(--color-primary);
+  outline-style: dashed;
+}
+
+/* Picker highlight (hover preview in element picker) */
+.canvas-page-node.canvas-picker-highlight {
+  outline: 2px solid var(--color-tertiary) !important;
+  outline-offset: 2px;
+  background: var(--color-tertiary-container) !important;
+}
+
+/* Element picker dropdown (Alt+click) */
+.canvas-element-picker {
+  position: fixed;
+  z-index: 100;
+  background: var(--color-surface);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  min-width: 180px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.canvas-picker-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
+  padding: 5px 8px;
+  border-radius: 3px;
   cursor: pointer;
-  user-select: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 
-.node-element-badge {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  padding: 1px 5px;
+.canvas-picker-item:hover {
+  background: var(--color-primary-container);
+}
+
+.canvas-picker-badge {
+  font-size: 9px;
+  padding: 1px 4px;
   border-radius: 3px;
   background: var(--color-surface-variant);
   color: var(--color-on-surface-variant);
-  white-space: nowrap;
-}
-
-.page-node-box .node-element-badge {
-  background: #1a2744;
-  color: #8ab4f8;
-}
-
-.page-node-text .node-element-badge {
-  background: #2d1f3d;
-  color: #c58af9;
-}
-
-.page-node-image .node-element-badge {
-  background: #1f3d2d;
-  color: #81c995;
-}
-
-.node-content-preview {
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: var(--color-on-surface-variant);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.node-child-count {
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
-.page-node-children {
-  margin-left: 16px;
-  padding-left: 8px;
-  border-left: 1px solid var(--color-outline-variant);
-}
-
-.page-node-empty-drop {
-  padding: 16px;
-  text-align: center;
-  border: 2px dashed var(--color-outline-variant);
-  border-radius: var(--radius);
-  color: var(--color-on-surface-variant);
-  font-size: 12px;
-  margin: 4px 0;
-}
-
-/* Drop zones */
-.page-drop-zone {
-  height: 4px;
-  margin: 1px 0;
-  border-radius: 2px;
-  transition: all 0.15s;
-}
-
-.page-drop-zone.drop-zone-active {
-  height: 24px;
-  background: var(--color-primary-container);
-  border: 2px dashed var(--color-primary);
-}
-
-.page-node.dragging {
-  opacity: 0.4;
+  text-transform: uppercase;
+  flex-shrink: 0;
 }
 
 /* Inspector */
@@ -1326,7 +1377,7 @@ input[type="text"].title-input.invalid {
 .inspector-css-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   margin-bottom: 4px;
 }
 
@@ -1334,14 +1385,86 @@ input[type="text"].title-input.invalid {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--color-on-surface-variant);
-  min-width: 80px;
+  min-width: 70px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
-.inspector-css-row .value-input {
+.inspector-css-value {
   flex: 1;
   font-family: var(--font-mono);
   font-size: 11px;
+  min-width: 0;
+}
+
+.inspector-css-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.inspector-css-remove:hover {
+  background: var(--color-error);
+  color: #fff;
+}
+
+.inspector-styles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* CSS property picker dropdown */
+.css-property-picker {
+  position: relative;
+  margin-top: 4px;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  z-index: 20;
+}
+
+.css-picker-search {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius) var(--radius) 0 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
+
+.css-picker-list {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.css-picker-item {
+  padding: 5px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.css-picker-item:hover {
+  background: var(--color-primary-container);
+}
+
+.css-picker-empty {
+  padding: 8px;
+  text-align: center;
 }
 
 .inspector-divider {
