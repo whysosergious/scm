@@ -102,14 +102,14 @@ The configuration file is `scm-config.json` at the SCM repository root.
 {
   "config_version": 1,
   "projects_dir": "projects",
-  "media_dir": "./public/media/",
   "projects": [
     {
       "id": "wss-index",
       "name": "WSS Index",
       "repo": "https://github.com/whysosergious/wss-index.git",
       "branch": "main",
-      "content_dir": "content"
+      "content_dir": "content",
+      "media_dir": "./public/media/"
     }
   ]
 }
@@ -123,9 +123,9 @@ An integer identifying the configuration format version. The only supported valu
 
 Path to the directory containing local project checkouts, relative to the SCM working directory. Absolute paths and `..` traversal are rejected.
 
-### `media_dir`
+#### Project `media_dir`
 
-Target-checkout-relative folder for uploaded media. Defaults to `./public/media/` when absent. Must be a relative path (same rules as `projects_dir` / `content_dir`). Resolved against the target project checkout so media files are versioned and published with it. See `spec_media_managment.json` for the full media management specification.
+Target-checkout-relative folder for uploaded media. Defaults to `./public/media/` when absent. Must be a relative path (same rules as `content_dir`). Resolved against the target project checkout so media files are versioned and published with it. See §18 for the full media management specification.
 
 ### `projects`
 
@@ -392,3 +392,66 @@ The first version is successful when a user can:
 10. Save valid JSON; receive an error instead of saving invalid JSON; Cancel restores the on-disk state.
 11. View the target project's Git status and commit + push content changes.
 12. Keep the target website independently hostable as a static website.
+
+## 18. Media management
+
+### 18.1 Configuration
+
+Each project entry gains an optional `media_dir` property (default `"./public/media/"`). Must be a relative path (same rules as `content_dir`). Resolved against the target project checkout so media files are versioned and published with it.
+
+### 18.2 Backend API
+
+All under `/api/projects/{id}/media`, operating strictly inside `<checkout>/<media_dir>` (traversal-proof; names are validated single path components with an image extension allow-list: png, jpg, jpeg, gif, webp, svg, avif, ico, bmp).
+
+| Method | Path | Purpose | Response |
+|---|---|---|---|
+| GET | `/media` | list files | `{ media_dir, files: [{ name, size, url, modified }] }` |
+| GET | `/media/{name}` | serve raw file (correct image content-type) | binary |
+| POST | `/media?filename=…` | upload (raw bytes, ≤20 MB, dedup `name-2.ext`…) | `201 { url, file }` |
+| POST | `/media/{name}/rename` | rename; body `{name}`; 409 on conflict | `{ renamed, url }` |
+| DELETE | `/media/{name}` | delete file | `{ deleted }` |
+
+Notes:
+
+- `url` in listings is the site-relative URL (`/<media_dir>/<name>`, normalized without `./` and trailing slash) — this is what content embeds and what "copy link" puts on the clipboard.
+- The former `/assets` upload endpoint is superseded by `POST …/media`.
+- Publishing stages `media_dir` (when present) in addition to the content directory and the legacy `public/images` folder for backwards compatibility.
+- Non-image files inside `media_dir` are ignored by listings; they are never deleted or moved by SCM.
+
+### 18.3 Control panel
+
+**Navigation**: the sidebar gains a **Media** button above the Content category. Clicking it switches the canvas to the media manager view. Clicking a content file or Settings switches away.
+
+**Media manager view**:
+
+- **Upload** button at the top (file picker; multiple files allowed; dedup rules apply).
+- **View mode toggle** with four modes, persisted in `localStorage` (key `scm:media-view`):
+  1. `grid-sm` — small grid (compact thumbnails)
+  2. `grid-lg` — large grid (big thumbnails)
+  3. `list-md` — list with medium previews
+  4. `list-sm` — list with minimal previews (tiny thumbnail, row-oriented)
+- Each item shows a preview, file name, size, and three actions: **copy link** (site-relative URL → clipboard), **rename** (inline prompt; 409 on duplicate), **delete** (confirm dialog).
+- Empty state: hint + upload button.
+
+**Viewer (lightbox)**: clicking an item opens a full-screen viewer:
+
+- Large centered preview over a dimmed backdrop.
+- Left/right arrow buttons navigate to the previous/next media item (wrapping); keyboard arrow keys do the same.
+- `×` button and `Esc` close; swipe gestures: left/right navigate, up/down close.
+- Bottom bar repeats rename / copy link / delete for the open item.
+- Navigation order follows the current list order.
+- Closing the viewer after rename/delete refreshes the grid.
+
+### 18.4 Rich editor integration
+
+The ProseMirror "insert image (upload)" button uploads into `media_dir` through the same endpoint and embeds the returned site-relative URL. The "copy link" URL matches what the editor embeds, so pasted links resolve.
+
+### 18.5 Acceptance criteria
+
+1. `media_dir` defaults to `./public/media/` and is validated when present.
+2. Uploads land in `<checkout>/<media_dir>` with dedup and are published.
+3. The sidebar Media button opens the manager; the four view modes work and persist across reloads.
+4. Copy link puts the site-relative URL on the clipboard.
+5. Rename rejects duplicates (409 surfaced inline); delete removes the file.
+6. The viewer opens on click, navigates with arrows/keys/swipe, closes with ×/Esc/down-swipe, and offers rename/copy link/delete.
+7. Closing the viewer after rename or delete refreshes the grid.

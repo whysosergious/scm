@@ -9,7 +9,6 @@ export const state = {
   ready: false,
   projects: [],
   projectsDir: 'projects',
-  mediaDir: './public/media/',
   selectedId: null,
   selectedFile: null,
   files: [],
@@ -39,7 +38,7 @@ export function selectedProject() {
 
 export async function refreshProjects() {
   const data = await api.listProjects();
-  patch({ projects: data.projects, projectsDir: data.projects_dir, mediaDir: data.media_dir });
+  patch({ projects: data.projects, projectsDir: data.projects_dir });
   applySelectionRules();
   return data;
 }

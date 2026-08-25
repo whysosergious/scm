@@ -18,13 +18,19 @@ Built with Rust (Actix Web + Tokio) and vanilla HTML/CSS/JS ES modules.
 - **Three string editor modes** — single-line input, auto-growing text field,
   and a rich text editor (ProseMirror) with autodetected HTML/Markdown
   round-tripping. Rich mode covers headings, lists, quotes, code blocks,
-  links, images (URL or **upload** into the site's `public/images/`),
+  links, images (URL or **upload** into the site's media folder),
   rules, alignment, smart typography and more.
 - **Raw JSON mode** — plain-text editing with syntax validation; form edits
   and JSON edits stay in sync.
-- **Git publishing** — one click stages the content directory, commits, and
-  pushes; clear outcomes for every failure case (auth, non-fast-forward,
-  conflicts, …). Local content is never reverted on failure.
+- **Media management** — browse, upload, rename, delete media files through
+  a dedicated manager with four view modes (small/large grid, list with
+  medium/small previews). A lightbox viewer with keyboard/swipe navigation
+  and a bottom action bar. Uploads land in a configurable per-project `media_dir`
+  (default `./public/media/`) inside the target checkout, versioned and
+  published with the content.
+- **Git publishing** — one click stages the content directory plus media
+  folder, commits, and pushes; clear outcomes for every failure case (auth,
+  non-fast-forward, conflicts, …). Local content is never reverted on failure.
 - **Config editing** — the full `scm-config.json` editable in the panel with
   validation and atomic writes; unknown keys are preserved.
 - **Safety** — path-traversal protection everywhere, atomic file writes,
@@ -50,7 +56,8 @@ Requires: Rust (stable) and Git on `PATH`. Node/npm are **not** needed to run.
 
 - **Sidebar** — the collapsible *Content* category lists the `.json` files of
   the selected project; `+ Add` creates a new one (offering to create the
-  content directory first if it is missing). Collapse the sidebar with the
+  content directory first if it is missing). The **Media** button above
+  Content opens the media manager. Collapse the sidebar with the
   arrow in its header; hovering the folder icon then shows the file list as a
   fly-out.
 - **Editor tabs** — *Form* (default) renders recursive property forms;
@@ -65,6 +72,10 @@ Requires: Rust (stable) and Git on `PATH`. Node/npm are **not** needed to run.
   multi-line text → text field) and your manual choice is remembered.
 - **Publish** — asks for a commit message and reports the outcome (pushed,
   nothing to do, auth failed, remote rejected, …).
+- **Media** — upload images via the toolbar, switch between four view modes
+  (small/large grid, list with medium/small previews), click an image to
+  open the lightbox viewer (arrow keys / swipe to navigate, Esc to close),
+  copy link / rename / delete from the grid or the viewer's bottom bar.
 - **Settings** — raw `scm-config.json` editor with Validate/Save.
 
 ## Configuration
@@ -81,7 +92,8 @@ Requires: Rust (stable) and Git on `PATH`. Node/npm are **not** needed to run.
       "name": "WSS Index",
       "repo": "https://github.com/you/site.git",
       "branch": "main",
-      "content_dir": "content"
+      "content_dir": "content",
+      "media_dir": "./public/media/"
     }
   ]
 }
@@ -151,5 +163,5 @@ web/                control panel (styles, scripts, vendor bundle)
 web/editor-src/     ProseMirror editor source + build (build-time only)
 tools/e2e/          headless regression suite
 projects/           local checkouts of target repos (git-ignored)
-spec.md             product specification
+spec.md             product specification (incl. §18 media management)
 ```

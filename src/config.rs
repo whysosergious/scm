@@ -11,16 +11,11 @@ use std::path::{Path, PathBuf};
 
 pub const CONFIG_FILE: &str = "scm-config.json";
 pub const SUPPORTED_CONFIG_VERSION: u32 = 1;
-pub const DEFAULT_MEDIA_DIR: &str = "./public/media/";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub config_version: u32,
     pub projects_dir: String,
-    /// Target-checkout-relative folder for uploaded media. Optional;
-    /// defaults to ./public/media/.
-    #[serde(default = "default_media_dir")]
-    pub media_dir: String,
     #[serde(default)]
     pub projects: Vec<ProjectConfig>,
     /// Unknown top-level keys, preserved across load/save round-trips (spec §10).
@@ -35,6 +30,10 @@ pub struct ProjectConfig {
     pub repo: String,
     pub branch: String,
     pub content_dir: String,
+    /// Per-project media folder (relative to checkout). Defaults to
+    /// ./public/media/ when absent.
+    #[serde(default = "default_media_dir")]
+    pub media_dir: String,
     /// Unknown per-project keys, preserved across round-trips (spec §10).
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -45,7 +44,7 @@ pub fn default_path() -> PathBuf {
 }
 
 fn default_media_dir() -> String {
-    DEFAULT_MEDIA_DIR.to_string()
+    "./public/media/".to_string()
 }
 
 impl AppConfig {
@@ -87,8 +86,6 @@ impl AppConfig {
         }
         paths::validate_relative(&self.projects_dir)
             .map_err(|e| ScmError::config(format!("Invalid projects_dir: {e}")))?;
-        paths::validate_relative(&self.media_dir)
-            .map_err(|e| ScmError::config(format!("Invalid media_dir: {e}")))?;
 
         let mut seen_ids: HashSet<&str> = HashSet::new();
         for project in &self.projects {
@@ -124,6 +121,9 @@ impl AppConfig {
             }
             paths::validate_relative(&project.content_dir).map_err(|e| {
                 ScmError::config(format!("Project '{}' has an invalid content_dir: {e}", project.id))
+            })?;
+            paths::validate_relative(&project.media_dir).map_err(|e| {
+                ScmError::config(format!("Project '{}' has an invalid media_dir: {e}", project.id))
             })?;
         }
         Ok(())

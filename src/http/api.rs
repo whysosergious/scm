@@ -95,7 +95,6 @@ pub async fn list_projects(state: Ctx) -> ScmResult<HttpResponse> {
 
     Ok(HttpResponse::Ok().json(json!({
         "projects_dir": cfg.projects_dir,
-        "media_dir": cfg.media_dir,
         "projects": projects,
     })))
 }
@@ -147,6 +146,7 @@ pub async fn import_project(state: Ctx, body: web::Bytes) -> ScmResult<HttpRespo
         repo: body.repo.trim().to_string(),
         branch: body.branch.trim().to_string(),
         content_dir: body.content_dir.trim().to_string(),
+        media_dir: "./public/media/".to_string(),
         extra: Default::default(),
     };
     cfg.projects.push(project_cfg.clone());
@@ -307,7 +307,6 @@ fn media_content_type(name: &str) -> &'static str {
 
 /// Resolve <checkout>/<media_dir> for a project (traversal-proof).
 async fn media_dir_for(state: &Ctx, p: &ProjectConfig) -> ScmResult<std::path::PathBuf> {
-    let media_dir = state.config().media_dir;
     let checkout = project::checkout_path(&state.projects_root(), &p.id)?;
     if !checkout.is_dir() {
         return Err(ScmError::not_found(format!(
@@ -315,8 +314,8 @@ async fn media_dir_for(state: &Ctx, p: &ProjectConfig) -> ScmResult<std::path::P
             p.id
         )));
     }
-    crate::paths::safe_join(&checkout, std::path::Path::new(&media_dir)).ok_or_else(|| {
-        ScmError::config(format!("Invalid media_dir: '{media_dir}' escapes the checkout"))
+    crate::paths::safe_join(&checkout, std::path::Path::new(&p.media_dir)).ok_or_else(|| {
+        ScmError::config(format!("Invalid media_dir: '{}' escapes the checkout", p.media_dir))
     })
 }
 
@@ -338,11 +337,10 @@ struct MediaEntry {
 #[get("/projects/{id}/media")]
 pub async fn list_media(state: Ctx, path: web::Path<String>) -> ScmResult<HttpResponse> {
     let p = get_project(&state, path.into_inner())?;
-    let media_dir = state.config().media_dir;
     let dir = media_dir_for(&state, &p).await?;
 
     let files = {
-        let media_dir = media_dir.clone();
+        let media_dir = p.media_dir.clone();
         tokio::task::spawn_blocking(move || -> ScmResult<Vec<MediaEntry>> {
         let mut out: Vec<MediaEntry> = Vec::new();
         if dir.is_dir() {
@@ -378,7 +376,7 @@ pub async fn list_media(state: Ctx, path: web::Path<String>) -> ScmResult<HttpRe
         .map_err(|e| ScmError::internal("Media listing task panicked").with_detail(e.to_string()))??
     };
 
-    Ok(HttpResponse::Ok().json(json!({ "media_dir": media_dir, "files": files })))
+    Ok(HttpResponse::Ok().json(json!({ "media_dir": p.media_dir, "files": files })))
 }
 
 /// Serve a media file raw (for previews in the panel).
@@ -430,7 +428,6 @@ pub async fn upload_media(
             "Invalid filename — allowed extensions: png, jpg, jpeg, gif, webp, svg, avif, ico, bmp",
         ));
     };
-    let media_dir = state.config().media_dir;
     let dir = media_dir_for(&state, &p).await?;
 
     let final_name = {
@@ -467,7 +464,7 @@ pub async fn upload_media(
     .await
     .map_err(|e| ScmError::internal("Media upload task panicked").with_detail(e.to_string()))??;
 
-    let url = media_site_url(&media_dir, &final_name);
+    let url = media_site_url(&p.media_dir, &final_name);
     log::info!("Media uploaded: {} ({} bytes)", url, body.len());
     Ok(HttpResponse::Created().json(json!({ "url": url, "file": final_name })))
 }
@@ -515,10 +512,9 @@ pub async fn rename_media(
         return Err(ScmError::config("Invalid new media filename"));
     };
     if new_name == old {
-        return Ok(HttpResponse::Ok().json(json!({ "renamed": old, "url": media_site_url(&state.config().media_dir, &old) })));
+        return Ok(HttpResponse::Ok().json(json!({ "renamed": old, "url": media_site_url(&p.media_dir, &old) })));
     }
 
-    let media_dir = state.config().media_dir;
     let dir = media_dir_for(&state, &p).await?;
     let from = dir.join(&old);
     let to = dir.join(&new_name);
@@ -535,7 +531,7 @@ pub async fn rename_media(
     .await
     .map_err(|e| ScmError::internal("Media rename task panicked").with_detail(e.to_string()))??;
 
-    let url = media_site_url(&media_dir, &new_name);
+    let url = media_site_url(&p.media_dir, &new_name);
     Ok(HttpResponse::Ok().json(json!({ "renamed": new_name, "url": url })))
 }
 
@@ -695,8 +691,7 @@ pub async fn publish(state: Ctx, path: web::Path<String>, body: web::Bytes) -> S
     // (uploads live in <checkout>/<media_dir>; public/images is the legacy
     // location kept for backwards compatibility).
     let mut pathspecs = vec![p.content_dir.clone()];
-    let media_dir = state.config().media_dir;
-    let media_norm = media_dir.trim_start_matches("./").trim_end_matches('/').to_string();
+    let media_norm = p.media_dir.trim_start_matches("./").trim_end_matches('/').to_string();
     if !media_norm.is_empty() && dest.join(&media_norm).is_dir() {
         pathspecs.push(media_norm);
     }

@@ -833,7 +833,7 @@ input[type="text"].title-input.invalid {
   min-height: 40px;
 }
 
-/* ================== Media manager (spec_media_managment.json) ================== */
+/* ================== Media manager (spec.md §18) ================== */
 
 .media-toolbar {
   display: flex;

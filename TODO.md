@@ -142,7 +142,7 @@ headlessly plus full manual smoke at `/`.
 
 ---
 
-## Media management (per spec_media_managment.json)
+## Media management (per spec.md §18)
 
 - [x] M1 — config `media_dir` (default `./public/media/`, validated) + backend:
   list / serve / upload / rename / delete under `/api/projects/{id}/media`;

@@ -1,9 +1,9 @@
-// Media manager view (spec_media_managment.json): list/upload/rename/delete media files from the
+// Media manager view (spec.md §18): list/upload/rename/delete media files from the
 // project's media folder, with four view modes and a lightbox viewer.
 
 import { api, ApiError } from '../api.js';
 import { el, icon } from '../dom.js';
-import { selectedProject, state } from '../state.js';
+import { selectedProject } from '../state.js';
 import { toast, toastError } from './toast.js';
 
 const VIEW_KEY = 'scm:media-view';
@@ -40,7 +40,7 @@ export function renderMedia(root) {
     return;
   }
 
-  const mediaDirLabel = state.mediaDir || 'media';
+  const mediaDirLabel = project.media_dir || 'media';
   const wrap = el('div', { class: 'media-view' });
 
   wrap.append(
