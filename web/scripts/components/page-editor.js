@@ -261,7 +261,7 @@ function renderEditor(root, project) {
 
   // Set up canvas drag/drop listeners once (not on every re-render)
   setProjectId(project.id);
-  setupCanvasDragDrop(canvasEl, () => doc, selectNode, onAddNode);
+  setupCanvasDragDrop(canvasEl, () => doc, selectNode, onDrop, onAddNode);
 
   // Escape key: deselect node
   if (_prevEscapeHandler) document.removeEventListener('keydown', _prevEscapeHandler);

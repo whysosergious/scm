@@ -113,10 +113,11 @@ export function renderCanvas(root, doc, selectedNodeId, onSelect, onDrop, onAddN
  * @param {HTMLElement} root - The canvas container element.
  * @param {function(): Object|null} getDoc - Returns the current page document (or null).
  * @param {function(string): void} onSelect - Callback when a node is selected.
+ * @param {function(string, string, number): void} onDrop - Callback when a node is dropped (nodeId, targetParentId, index).
  * @param {function(string, number, string): void} onAddNode - Callback to add a new node (parentId, index, type).
  * @returns {void}
  */
-export function setupCanvasDragDrop(root, getDoc, onSelect, onAddNode) {
+export function setupCanvasDragDrop(root, getDoc, onSelect, onDrop, onAddNode) {
   // Hover tracking: only one label at a time
   root.addEventListener('mouseover', (e) => {
     const node = e.target.closest?.('.canvas-page-node');
