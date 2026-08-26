@@ -231,6 +231,13 @@ function renderNode(parent, node, selectedId, onSelect, onDrop, onAddNode) {
  */
 function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
   const element = (node.props && node.props.element) || 'div';
+
+  // Media players (video/audio) render via a selectable wrapper
+  if (element === 'video' || element === 'audio') {
+    renderMedia(parent, node, selectedId, onSelect);
+    return;
+  }
+
   const tag = document.createElement(element);
   tag.dataset.nodeId = node.id;
   tag.dataset.nodeType = 'box';
@@ -238,6 +245,7 @@ function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
   tag.classList.add('canvas-page-node');
   applyStyles(tag, node);
   applyClasses(tag, node);
+  applyAttrs(tag, node);
 
   if (node.children && node.children.length > 0) {
     for (const child of node.children) {
@@ -249,6 +257,7 @@ function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
 
   addInteraction(tag, node.id, onSelect);
   if (node.id === selectedId) tag.classList.add('selected');
+
   parent.append(tag);
 }
 
@@ -270,6 +279,7 @@ function renderText(parent, node, selectedId, onSelect) {
   tag.textContent = (node.props && node.props.value) || '';
   applyStyles(tag, node);
   applyClasses(tag, node);
+  applyAttrs(tag, node);
 
   addInteraction(tag, node.id, onSelect);
   if (node.id === selectedId) tag.classList.add('selected');
@@ -304,6 +314,52 @@ function renderImage(parent, node, selectedId, onSelect) {
   addInteraction(wrapper, node.id, onSelect);
   if (node.id === selectedId) wrapper.classList.add('selected');
   parent.append(wrapper);
+}
+
+/**
+ * Renders a video/audio node as a wrapper div containing the native player.
+ * Media players are leaf boxes; the wrapper carries selection/hover visuals
+ * because replaced elements cannot draw ::after labels.
+ * @param {HTMLElement} parent - Parent DOM element.
+ * @param {Object} node - Box node with props.element 'video'|'audio' and attrs (src, controls…).
+ * @param {string|null} selectedId - ID of the currently selected node.
+ * @param {function(string): void} onSelect - Node selection callback.
+ * @returns {void}
+ */
+function renderMedia(parent, node, selectedId, onSelect) {
+  const element = (node.props && node.props.element) || 'video';
+  const wrapper = document.createElement('div');
+  wrapper.dataset.nodeId = node.id;
+  wrapper.dataset.nodeType = 'box';
+  wrapper.dataset.element = element;
+  wrapper.classList.add('canvas-page-node', 'canvas-media');
+  applyStyles(wrapper, node);
+  applyClasses(wrapper, node);
+
+  const tag = document.createElement(element);
+  applyAttrs(tag, node);
+  wrapper.append(tag);
+
+  addInteraction(wrapper, node.id, onSelect);
+  if (node.id === selectedId) wrapper.classList.add('selected');
+  parent.append(wrapper);
+}
+
+/**
+ * Applies node.attrs as DOM attributes on a rendered element.
+ * Skips style/class (owned by styles/classes), event handlers (on*),
+ * and anything falsy-named to keep the editing surface safe.
+ * @param {HTMLElement} tag - The DOM element to decorate.
+ * @param {Object} node - Page node with optional attrs map.
+ * @returns {void}
+ */
+function applyAttrs(tag, node) {
+  const attrs = (node && node.attrs) || {};
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key === 'style' || key === 'class' || key === 'id') continue;
+    if (/^on/i.test(key)) continue;
+    tag.setAttribute(key, value == null ? '' : String(value));
+  }
 }
 
 /**

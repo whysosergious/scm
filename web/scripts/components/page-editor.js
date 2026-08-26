@@ -1,17 +1,20 @@
 // Page editor container (spec_page_editor.md §§11, 9a).
-// Toolbar + four-column layout: palette | tree | canvas | inspector.
+// Toolbar + two-column layout: canvas | tabbed right panel (Components | Tree | Inspector).
 // Manages page load/save flow, head element selection, and dirty state.
 
 import { api } from '../api.js';
 import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
-import { patch, refreshGitStatus, refreshPages, selectedProject, state } from '../state.js';
+import { patch, refreshGitStatus, refreshPages, selectedProject, setPageDirty, state } from '../state.js';
 import { renderPalette } from './page-palette.js';
 import { renderCanvas, setupCanvasDragDrop, setProjectId } from './page-canvas.js';
 import { renderInspector, renderHeadInspector } from './page-inspector.js';
 import { renderTree } from './page-tree.js';
 import { renderBoxModel, clearBoxModel } from './page-boxmodel.js';
 import { toast, toastError } from './toast.js';
+
+/** @type {function|null} Previous beforeunload handler to remove on re-render. */
+let _prevBeforeUnload = null;
 
 /**
  * Top-level entry point for the page editor. Shows the appropriate view
@@ -20,6 +23,8 @@ import { toast, toastError } from './toast.js';
  * @returns {void}
  */
 export function renderPageEditor(root) {
+  if (_prevBeforeUnload) { window.removeEventListener('beforeunload', _prevBeforeUnload); _prevBeforeUnload = null; }
+  setPageDirty(false);
   root.textContent = '';
   const project = selectedProject();
 
@@ -119,7 +124,7 @@ function renderNoPage(root, project) {
 }
 
 /**
- * Renders the full page editor: toolbar, four-column layout (palette|tree|canvas|inspector),
+ * Renders the full page editor: toolbar, two-column layout (canvas | tabbed panel),
  * manages load/save flow, head element selection, and dirty state.
  * @param {HTMLElement} root - Container element.
  * @param {Object} project - Project configuration object.
@@ -132,6 +137,7 @@ function renderEditor(root, project) {
   let dirty = false;
   let selectedNodeId = null;
   let selectedHeadIndex = null;
+  const treeCollapsed = new Set();
 
   // Layout
   const wrap = el('div', { class: 'page-editor-wrap' });
@@ -140,6 +146,11 @@ function renderEditor(root, project) {
   const saveBtn = el('button', { class: 'btn-save', disabled: true }, icon('save', 16), ' Save');
   const generateBtn = el('button', { class: 'btn-secondary' }, icon('code', 16), ' Generate');
   const previewBtn = el('button', { class: 'btn-secondary' }, icon('open_in_new', 16), ' Preview');
+  const importHtmlBtn = el('button', { class: 'btn-secondary' }, icon('upload', 16), ' Import HTML');
+  importHtmlBtn.addEventListener('click', async () => {
+    const mod = await import('./page-import-modal.js');
+    mod.openHtmlImportModal();
+  });
   const dirtyIndicator = el('span', { class: 'muted-note', text: '', style: { display: 'none' } });
 
   const toolbar = el('div', { class: 'page-toolbar' },
@@ -148,22 +159,65 @@ function renderEditor(root, project) {
       dirtyIndicator,
     ),
     el('div', { class: 'page-toolbar-right' },
+      importHtmlBtn,
       generateBtn,
       previewBtn,
       saveBtn,
     ),
   );
 
-  // Four-column layout: palette | tree | canvas | inspector
-  const paletteEl = el('div', { class: 'page-palette' });
-  const treeEl = el('div', { class: 'page-tree' });
+  // Two-column layout: canvas | tabbed right panel
   const canvasEl = el('div', { class: 'page-canvas' });
-  const inspectorEl = el('div', { class: 'page-inspector' });
 
-  const columns = el('div', { class: 'page-columns' }, paletteEl, treeEl, canvasEl, inspectorEl);
+  // Right panel with tabs
+  let activeTab = 'inspector'; // 'components' | 'tree' | 'inspector'
+  const rightPanel = el('div', { class: 'page-right-panel' });
+  const tabBar = el('div', { class: 'panel-tab-bar' });
+  const tabContent = el('div', { class: 'panel-tab-content' });
+
+  const tabs = [
+    { id: 'components', label: 'Components', icon: 'widgets' },
+    { id: 'tree', label: 'Tree', icon: 'account_tree' },
+    { id: 'inspector', label: 'Inspector', icon: 'tune' },
+  ];
+
+  const tabButtons = {};
+  for (const t of tabs) {
+    const btn = el('button', {
+      class: 'panel-tab' + (t.id === activeTab ? ' active' : ''),
+      'data-tab': t.id,
+    }, icon(t.icon, 16), el('span', { text: t.label }));
+    btn.addEventListener('click', () => switchTab(t.id));
+    tabButtons[t.id] = btn;
+    tabBar.append(btn);
+  }
+
+  rightPanel.append(tabBar, tabContent);
+
+  const columns = el('div', { class: 'page-columns' }, canvasEl, rightPanel);
 
   wrap.append(toolbar, columns);
   root.append(wrap);
+
+  // Tab content containers (created once, reused)
+  const componentsContent = el('div', { class: 'panel-tab-pane' });
+  const treeContent = el('div', { class: 'panel-tab-pane' });
+  const inspectorContent = el('div', { class: 'panel-tab-pane' });
+  treeContent.tabIndex = 0;
+
+  function switchTab(id) {
+    activeTab = id;
+    for (const [tid, btn] of Object.entries(tabButtons)) {
+      btn.classList.toggle('active', tid === id);
+    }
+    tabContent.textContent = '';
+    if (id === 'components') tabContent.append(componentsContent);
+    else if (id === 'tree') tabContent.append(treeContent);
+    else if (id === 'inspector') tabContent.append(inspectorContent);
+  }
+
+  // Initial tab content render
+  switchTab(activeTab);
 
   // Set up canvas drag/drop listeners once (not on every re-render)
   setProjectId(project.id);
@@ -262,6 +316,7 @@ function renderEditor(root, project) {
   // State
   function markDirty(v) {
     dirty = v;
+    setPageDirty(v);
     saveBtn.disabled = !v;
     dirtyIndicator.style.display = v ? 'inline' : 'none';
     dirtyIndicator.textContent = v ? '(unsaved changes)' : '';
@@ -278,20 +333,22 @@ function renderEditor(root, project) {
   /** Re-render the tree panel (head + body sections). */
   function refreshTree() {
     if (!doc) return;
-    renderTree(treeEl, doc, selectedNodeId, selectedHeadIndex, {
+    renderTree(treeContent, doc, selectedNodeId, selectedHeadIndex, {
       onSelectNode: selectNode,
       onSelectHead: selectHead,
       onAddHead,
       onRemoveHead,
-    });
+      onRemoveNode,
+      onAddToNode,
+    }, treeCollapsed);
   }
 
   /** Re-render the inspector for the current selection (node or head). */
   function refreshInspector() {
     if (selectedHeadIndex !== null) {
-      renderHeadInspector(inspectorEl, doc, selectedHeadIndex, onNodeChange, () => onRemoveHead(selectedHeadIndex));
+      renderHeadInspector(inspectorContent, doc, selectedHeadIndex, onNodeChange, () => onRemoveHead(selectedHeadIndex));
     } else {
-      renderInspector(inspectorEl, doc, selectedNodeId, onNodeChange);
+      renderInspector(inspectorContent, doc, selectedNodeId, onNodeChange);
     }
   }
 
@@ -357,8 +414,12 @@ function renderEditor(root, project) {
   }
 
   /** Handle adding a new body node. */
-  function onAddNode(parentId, index, type) {
-    const node = pm.addNode(doc.root, parentId, type, index);
+  function onAddNode(parentId, index, typeSpec) {
+    // Palette items may pass "type:element" composites (e.g. "text:a", "box:video")
+    const sep = typeSpec.indexOf(':');
+    const type = sep === -1 ? typeSpec : typeSpec.slice(0, sep);
+    const element = sep === -1 ? undefined : typeSpec.slice(sep + 1);
+    const node = pm.addNode(doc.root, parentId, type, index, {}, element);
     if (node) {
       markDirty(true);
       clearBoxModel(canvasEl);
@@ -388,6 +449,28 @@ function renderEditor(root, project) {
     markDirty(true);
     refreshTree();
     refreshInspector();
+  }
+
+  /** Remove a body node by id (called from tree keyboard Delete). */
+  function onRemoveNode(nodeId) {
+    if (!doc || nodeId === 'root') return;
+    if (confirm(`Delete node "${nodeId}"?`)) {
+      pm.removeNode(doc.root, nodeId);
+      if (selectedNodeId === nodeId) selectedNodeId = null;
+      markDirty(true);
+      renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+      refreshTree();
+      refreshInspector();
+    }
+  }
+
+  /** Add a child to a specific node (from tree "+" button). Prompts with a simple type choice. */
+  function onAddToNode(parentId) {
+    const type = prompt('Component type (box, text, image):', 'box');
+    if (!type) return;
+    const t = type.trim().toLowerCase();
+    if (!['box', 'text', 'image'].includes(t)) { toast('Invalid type', 'error'); return; }
+    onAddNode(parentId, undefined, t);
   }
 
   // Actions
@@ -423,7 +506,7 @@ function renderEditor(root, project) {
   });
 
   // Initial render
-  renderPalette(paletteEl, (type) => {
+  renderPalette(componentsContent, (type) => {
     onAddNode(doc.root.id, doc.root.children.length, type);
   });
 
@@ -434,6 +517,13 @@ function renderEditor(root, project) {
     }
   });
   resizeObs.observe(canvasEl);
+
+  // Warn before leaving with unsaved changes
+  function onBeforeUnload(e) {
+    if (dirty) { e.preventDefault(); e.returnValue = ''; }
+  }
+  window.addEventListener('beforeunload', onBeforeUnload);
+  _prevBeforeUnload = onBeforeUnload;
 
   // Load page
   loadPage();

@@ -34,6 +34,7 @@ export const state = {
   selectedPage: null,
   gitStatus: null,
   view: 'content', // 'content' | 'settings' | 'media' | 'page-editor'
+  pageDirty: false,
 };
 
 /** @type {Set<function(Object): void>} Active state-change subscribers. */
@@ -110,10 +111,13 @@ export function applySelectionRules() {
 /**
  * Sets the active project by id, persists it to localStorage, resets
  * file/page/git state, and triggers a refresh of all project data.
+ * If the page editor is dirty, prompts the user before switching.
  * @param {string} id - The project id to select.
  * @returns {void}
  */
 export function setSelection(id) {
+  if (id === state.selectedId) return;
+  if (!confirmIfDirty()) return;
   localStorage.setItem(STORAGE_KEY, id);
   patch({
     selectedId: id,
@@ -163,12 +167,41 @@ export async function refreshPages() {
 }
 
 /**
+ * Returns true if the page editor has unsaved changes.
+ * @returns {boolean}
+ */
+export function isPageDirty() {
+  return state.pageDirty;
+}
+
+/**
+ * Sets the page editor dirty flag.
+ * @param {boolean} v
+ * @returns {void}
+ */
+export function setPageDirty(v) {
+  state.pageDirty = v;
+}
+
+/**
+ * Prompts the user if there are unsaved page changes.
+ * @returns {boolean} True if safe to proceed, false if user cancelled.
+ */
+export function confirmIfDirty() {
+  if (!state.pageDirty) return true;
+  return confirm('You have unsaved changes. Discard them?');
+}
+
+/**
  * Selects a page for editing in the page-editor view.
+ * If the editor is dirty, prompts the user before switching.
  * @param {string} name - Page name to open.
  * @returns {void}
  */
 export function setPageSelection(name) {
-  patch({ selectedPage: name, view: 'page-editor', selectedFile: null });
+  if (name === state.selectedPage) return;
+  if (!confirmIfDirty()) return;
+  patch({ selectedPage: name, view: 'page-editor', selectedFile: null, pageDirty: false });
 }
 
 /**

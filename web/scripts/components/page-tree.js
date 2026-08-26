@@ -1,5 +1,6 @@
 // DOM tree panel for the page editor (spec_page_editor.md §11).
 // Shows head elements and recursive body node tree.
+// Supports keyboard navigation: arrow keys, Enter to select, Delete to remove.
 
 import { el } from '../dom.js';
 import { headElementLabel } from '../page-model.js';
@@ -56,18 +57,39 @@ function nodePreview(node) {
 }
 
 /**
+ * Flatten visible tree items (head + body) in display order for keyboard navigation.
+ * Each item: { type: 'head'|'body', index?: number, nodeId?: string, el: HTMLElement }
+ * @param {HTMLElement} root
+ * @returns {Array<{type: string, index?: number, nodeId?: string, el: HTMLElement}>}
+ */
+function getVisibleItems(root) {
+  const items = [];
+  root.querySelectorAll('.tree-item').forEach((row) => {
+    if (row.offsetParent === null) return; // skip hidden
+    if (row.classList.contains('tree-item-head')) {
+      const idx = parseInt(row.dataset.headIndex, 10);
+      items.push({ type: 'head', index: idx, el: row });
+    } else if (row.dataset.nodeId) {
+      items.push({ type: 'body', nodeId: row.dataset.nodeId, el: row });
+    }
+  });
+  return items;
+}
+
+/**
  * Render the DOM tree panel showing head elements and body node tree.
  * @param {HTMLElement} root - Container to render into.
  * @param {import('../page-model.js').PageDocument} doc - Page document.
  * @param {string|null} selectedNodeId - Currently selected body node ID, or null.
  * @param {number|null} selectedHeadIndex - Currently selected head element index, or null.
- * @param {Object} callbacks - { onSelectNode, onSelectHead, onAddHead, onRemoveHead }
+ * @param {Object} callbacks - { onSelectNode, onSelectHead, onAddHead, onRemoveHead, onRemoveNode }
+ * @param {Set<string>} [collapsed] - Persistent collapsed node IDs (shared across renders).
  */
-export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbacks) {
+export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbacks, collapsed) {
   root.textContent = '';
 
-  /** @type {Set<string>} IDs of collapsed tree nodes. */
-  const collapsed = new Set();
+  if (!collapsed) collapsed = new Set();
+  let focusedIdx = -1; // index into visible items for keyboard nav
 
   // ---- Head section ----
   const headSection = el('div', { class: 'page-tree-head' });
@@ -81,11 +103,11 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
     const idx = i;
     const row = el('div', {
       class: 'tree-item tree-item-head' + (selectedHeadIndex === idx ? ' selected' : ''),
+      'data-head-index': String(idx),
     });
     row.append(el('span', { class: 'tree-badge', text: HEAD_BADGES[elem.type] || '?' }));
     row.append(el('span', { class: 'tree-label', text: headElementLabel(elem) }));
 
-    // Hover-revealed delete button
     const delBtn = el('button', {
       class: 'tree-delete',
       title: 'Remove',
@@ -125,7 +147,6 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
     dropdown.style.display = visible ? 'none' : 'block';
   });
 
-  // Close dropdown when clicking outside
   document.addEventListener('click', () => {
     dropdown.style.display = 'none';
   });
@@ -153,6 +174,7 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
 
     const row = el('div', {
       class: 'tree-item' + (selectedNodeId === node.id ? ' selected' : ''),
+      'data-node-id': node.id,
       style: { paddingLeft: `${depth * 16}px` },
     });
 
@@ -165,7 +187,6 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
           e.stopPropagation();
           if (collapsed.has(node.id)) collapsed.delete(node.id);
           else collapsed.add(node.id);
-          // Re-render body list
           bodyList.textContent = '';
           if (doc.root) renderNode(doc.root, 0);
         },
@@ -178,10 +199,22 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
     row.append(el('span', { class: 'tree-badge', text: NODE_BADGES[node.type] || '?' }));
     row.append(el('span', { class: 'tree-label', html: nodePreview(node) }));
 
+    // Add child button (visible on hover, only for box nodes with children)
+    if (node.type === 'box' && node.id !== 'root') {
+      const addChildBtn = el('button', {
+        class: 'tree-add-child',
+        title: 'Add child',
+        onclick(e) {
+          e.stopPropagation();
+          callbacks.onAddToNode(node.id);
+        },
+      }, '+');
+      row.append(addChildBtn);
+    }
+
     row.addEventListener('click', () => callbacks.onSelectNode(node.id));
     bodyList.append(row);
 
-    // Render children if expanded
     if (hasChildren && !isCollapsed) {
       for (const child of node.children) {
         renderNode(child, depth + 1);
@@ -190,7 +223,6 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
   }
 
   if (doc.root) {
-    // Auto-expand ancestors of selected node
     if (selectedNodeId && doc.root) {
       autoExpandFor(doc.root, selectedNodeId);
     }
@@ -199,6 +231,99 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
 
   bodySection.append(bodyList);
   root.append(bodySection);
+
+  // ---- Keyboard navigation ----
+  root.addEventListener('keydown', handleKeyDown);
+
+  function handleKeyDown(e) {
+    const items = getVisibleItems(root);
+    if (items.length === 0) return;
+
+    // Find currently focused item
+    if (focusedIdx < 0 || focusedIdx >= items.length) {
+      // Default to selected item
+      focusedIdx = items.findIndex((it) =>
+        (it.type === 'body' && it.nodeId === selectedNodeId) ||
+        (it.type === 'head' && it.index === selectedHeadIndex)
+      );
+      if (focusedIdx < 0) focusedIdx = 0;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setFocused(items, Math.min(focusedIdx + 1, items.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setFocused(items, Math.max(focusedIdx - 1, 0));
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const item = items[focusedIdx];
+      if (item.type === 'body') {
+        // Expand if collapsed
+        if (collapsed.has(item.nodeId)) {
+          collapsed.delete(item.nodeId);
+          bodyList.textContent = '';
+          if (doc.root) renderNode(doc.root, 0);
+          // Re-find focused
+          const newItems = getVisibleItems(root);
+          const idx = newItems.findIndex((it) => it.nodeId === item.nodeId);
+          if (idx >= 0) setFocused(newItems, idx);
+        } else {
+          // Move to first child
+          const node = findNodeById(doc.root, item.nodeId);
+          if (node && node.children && node.children.length > 0) {
+            const childIdx = items.findIndex((it) => it.type === 'body' && it.nodeId === node.children[0].id);
+            if (childIdx >= 0) setFocused(items, childIdx);
+          }
+        }
+      }
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const item = items[focusedIdx];
+      if (item.type === 'body') {
+        // If expanded, collapse. If collapsed, move to parent.
+        if (collapsed.has(item.nodeId) || !hasVisibleChildren(doc.root, item.nodeId)) {
+          // Move to parent
+          const parent = findParentId(doc.root, item.nodeId);
+          if (parent) {
+            const parentIdx = items.findIndex((it) => it.type === 'body' && it.nodeId === parent);
+            if (parentIdx >= 0) setFocused(items, parentIdx);
+          }
+        } else {
+          collapsed.add(item.nodeId);
+          bodyList.textContent = '';
+          if (doc.root) renderNode(doc.root, 0);
+          const newItems = getVisibleItems(root);
+          const idx = newItems.findIndex((it) => it.nodeId === item.nodeId);
+          if (idx >= 0) setFocused(newItems, idx);
+        }
+      }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const item = items[focusedIdx];
+      if (item.type === 'body') callbacks.onSelectNode(item.nodeId);
+      else if (item.type === 'head') callbacks.onSelectHead(item.index);
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      const item = items[focusedIdx];
+      if (item.type === 'body' && item.nodeId !== 'root' && callbacks.onRemoveNode) {
+        callbacks.onRemoveNode(item.nodeId);
+      } else if (item.type === 'head' && callbacks.onRemoveHead) {
+        callbacks.onRemoveHead(item.index);
+      }
+    }
+  }
+
+  function setFocused(items, idx) {
+    // Remove old focus
+    root.querySelectorAll('.tree-item.focused').forEach((r) => r.classList.remove('focused'));
+    focusedIdx = idx;
+    const row = items[idx]?.el;
+    if (row) {
+      row.classList.add('focused');
+      row.scrollIntoView({ block: 'nearest' });
+    }
+  }
 
   /**
    * Expand all ancestors of targetId so the selected node is visible.
@@ -209,10 +334,55 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
     if (node.children) {
       for (const child of node.children) {
         if (isAncestorOf(child, targetId)) {
-          collapsed.delete(node.id); // ensure this parent is expanded
+          collapsed.delete(node.id);
           autoExpandFor(child, targetId);
         }
       }
     }
   }
+}
+
+/**
+ * Find a node by id in the tree.
+ * @param {import('../page-model.js').PageNode} root
+ * @param {string} id
+ * @returns {import('../page-model.js').PageNode|null}
+ */
+function findNodeById(root, id) {
+  if (root.id === id) return root;
+  if (root.children) {
+    for (const c of root.children) {
+      const hit = findNodeById(c, id);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+/**
+ * Find parent id of a node.
+ * @param {import('../page-model.js').PageNode} root
+ * @param {string} id
+ * @returns {string|null}
+ */
+function findParentId(root, id) {
+  if (root.children) {
+    for (const c of root.children) {
+      if (c.id === id) return root.id;
+      const hit = findParentId(c, id);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+/**
+ * Check if a node has visible (non-collapsed) children.
+ * @param {import('../page-model.js').PageNode} root
+ * @param {string} id
+ * @returns {boolean}
+ */
+function hasVisibleChildren(root, id) {
+  const node = findNodeById(root, id);
+  return !!(node && node.children && node.children.length > 0);
 }

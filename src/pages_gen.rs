@@ -538,8 +538,18 @@ fn render_node(node: &Value) -> ScmResult<String> {
         })
         .unwrap_or_default();
 
+    let extra_attrs = node
+        .get("attrs")
+        .and_then(|v| v.as_object());
+
+    // An explicit id="…" in attrs overrides the internal node id in output
+    let explicit_id = extra_attrs
+        .and_then(|m| m.get("id"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+
     let mut attrs = String::new();
-    if !id.is_empty() && id != "root" {
+    if !explicit_id.is_some() && !id.is_empty() && id != "root" {
         attrs.push_str(&format!(" id=\"{}\"", escape_attr(id)));
     }
     if !classes.is_empty() {
@@ -547,6 +557,21 @@ fn render_node(node: &Value) -> ScmResult<String> {
     }
     if !styles.is_empty() {
         attrs.push_str(&format!(" style=\"{}\"", escape_attr(&styles)));
+    }
+    if let Some(extra) = extra_attrs {
+        for (k, v) in extra {
+            // style/class handled above; drop event handlers and malformed names
+            if k == "style" || k == "class" || k.starts_with("on") || !is_safe_attr_name(k) {
+                continue;
+            }
+            let val = v.as_str().unwrap_or("");
+            if val.is_empty() {
+                // Boolean-style attribute: emit bare name
+                attrs.push_str(&format!(" {k}"));
+            } else {
+                attrs.push_str(&format!(" {}=\"{}\"", k, escape_attr(val)));
+            }
+        }
     }
 
     match node_type {
@@ -651,6 +676,21 @@ fn escape_attr(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// Check whether an attribute name is safe to emit: ASCII letter/`_`/`:`
+/// first, then letters/digits/`-`/`_`/`:`/`.`. Blocks event handlers
+/// (checked separately), whitespace, and injection attempts.
+fn is_safe_attr_name(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' || c == ':' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.'))
+}
+
 fn write_atomic(path: &Path, body: &str) -> ScmResult<()> {
     use std::io::Write;
     let tmp = path.with_file_name(format!(
@@ -685,6 +725,64 @@ fn write_atomic(path: &Path, body: &str) -> ScmResult<()> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn render_node_emits_attrs() {
+        let node = json!({
+            "id": "n1",
+            "type": "text",
+            "props": { "element": "a", "value": "Home" },
+            "styles": {},
+            "classes": [],
+            "attrs": {
+                "href": "/home",
+                "target": "_blank",
+                "disabled": "",
+                "onclick": "evil()",
+                "class": "ignored",
+                "style": "ignored",
+                "bad name": "dropped"
+            },
+            "children": []
+        });
+        let html = render_node(&node).unwrap();
+        assert!(html.contains(r#"<a id="keep-id""#) || html.contains("<a "));
+        assert!(html.contains(r#"href="/home""#));
+        assert!(html.contains("target=\"_blank\""));
+        // Boolean attribute emitted bare
+        assert!(html.contains(" disabled>"));
+        // Event handlers, style/class overrides and malformed names dropped
+        assert!(!html.contains("onclick"));
+        assert!(!html.contains("ignored"));
+        assert!(!html.contains("bad name"));
+    }
+
+    #[test]
+    fn render_node_attrs_id_overrides_internal_id() {
+        let node = json!({
+            "id": "node-7",
+            "type": "box",
+            "props": { "element": "div" },
+            "styles": {},
+            "classes": [],
+            "attrs": { "id": "hero" },
+            "children": []
+        });
+        let html = render_node(&node).unwrap();
+        assert!(html.contains(r#"<div id="hero">"#));
+        assert!(!html.contains("node-7"));
+    }
+
+    #[test]
+    fn is_safe_attr_name_works() {
+        assert!(is_safe_attr_name("href"));
+        assert!(is_safe_attr_name("data-id"));
+        assert!(is_safe_attr_name("aria-label"));
+        assert!(!is_safe_attr_name(""));
+        assert!(!is_safe_attr_name("bad name"));
+        assert!(!is_safe_attr_name("9start"));
+        assert!(!is_safe_attr_name("a\"b"));
+    }
 
     #[test]
     fn validates_version() {

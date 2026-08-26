@@ -9,14 +9,25 @@ use crate::error::ScmResult;
 use serde_json::{json, Value};
 
 /// Elements that map to Box nodes.
-const BOX_ELEMENTS: &[&str] = &["div", "section", "main", "header", "footer", "article", "aside"];
+const BOX_ELEMENTS: &[&str] = &[
+    "div", "section", "main", "header", "footer", "article", "aside", "nav", "ul", "ol",
+];
 
 /// Elements that map to Text nodes.
-const TEXT_ELEMENTS: &[&str] = &["p", "h1", "h2", "h3", "span", "blockquote"];
+const TEXT_ELEMENTS: &[&str] = &["p", "h1", "h2", "h3", "span", "blockquote", "a", "button", "li"];
+
+/// Elements that map to leaf Box nodes rendered as native media players.
+const MEDIA_ELEMENTS: &[&str] = &["video", "audio"];
 
 /// Elements that are unsupported and reported as warnings.
-const UNSUPPORTED_ELEMENTS: &[&str] = &[
-    "script", "video", "audio", "form", "input", "table", "svg", "iframe",
+const UNSUPPORTED_ELEMENTS: &[&str] = &["script", "form", "input", "table", "svg", "iframe"];
+
+/// Attribute names preserved into node `attrs`. Names starting with `aria-`
+/// or `data-` are also kept; everything else is dropped silently.
+const KNOWN_ATTRS: &[&str] = &[
+    "href", "target", "rel", "download", "type", "disabled", "name", "value",
+    "src", "controls", "autoplay", "loop", "muted", "preload", "poster",
+    "title", "role", "tabindex", "id", "width", "height", "placeholder",
 ];
 
 /// Import an HTML string into a page JSON document.
@@ -31,7 +42,8 @@ pub fn import_html(html: &str) -> ScmResult<Value> {
     let head_elements = parse_head_elements(html);
 
     // Simple element extraction (v1 approach)
-    parse_html_fragment(html, &mut root_children, &mut warnings);
+    let mut parser = FragmentParser { warnings: &mut warnings, next_id: 0 };
+    parser.parse_fragment(html, &mut root_children);
 
     let page = json!({
         "version": 1,
@@ -48,6 +60,7 @@ pub fn import_html(html: &str) -> ScmResult<Value> {
             "props": { "element": "main" },
             "styles": {},
             "classes": [],
+            "attrs": {},
             "children": root_children
         }
     });
@@ -252,143 +265,335 @@ fn parse_head_elements(html: &str) -> Vec<Value> {
     elements
 }
 
-fn parse_html_fragment(html: &str, children: &mut Vec<Value>, warnings: &mut Vec<String>) {
-    let mut pos = 0;
-    let bytes = html.as_bytes();
+/// Stateful fragment parser producing uniquely-identified SCM nodes from HTML.
+struct FragmentParser<'a> {
+    warnings: &'a mut Vec<String>,
+    next_id: usize,
+}
 
-    while pos < bytes.len() {
-        // Skip to next '<'
-        if bytes[pos] != b'<' {
+impl FragmentParser<'_> {
+    fn next_node_id(&mut self) -> String {
+        self.next_id += 1;
+        format!("imp-{}", self.next_id)
+    }
+
+    fn parse_fragment(&mut self, html: &str, children: &mut Vec<Value>) {
+        let mut pos = 0;
+        let bytes = html.as_bytes();
+
+        while pos < bytes.len() {
+            // Skip to next '<'
+            if bytes[pos] != b'<' {
+                pos += 1;
+                continue;
+            }
+
+            // Find the end of the opening tag
+            let tag_start = pos;
             pos += 1;
-            continue;
-        }
+            if pos >= bytes.len() {
+                break;
+            }
 
-        // Find the end of the opening tag
-        let tag_start = pos;
-        pos += 1;
-        if pos >= bytes.len() {
-            break;
-        }
+            // Skip closing tags
+            if bytes[pos] == b'/' {
+                while pos < bytes.len() && bytes[pos] != b'>' {
+                    pos += 1;
+                }
+                pos += 1;
+                continue;
+            }
 
-        // Skip closing tags
-        if bytes[pos] == b'/' {
-            // Find matching '>'
-            while pos < bytes.len() && bytes[pos] != b'>' {
+            // Skip comments
+            if pos + 2 < bytes.len()
+                && bytes[pos] == b'!'
+                && bytes[pos + 1] == b'-'
+                && bytes[pos + 2] == b'-'
+            {
+                while pos + 2 < bytes.len() {
+                    if bytes[pos] == b'-' && bytes[pos + 1] == b'-' && bytes[pos + 2] == b'>' {
+                        pos += 3;
+                        break;
+                    }
+                    pos += 1;
+                }
+                continue;
+            }
+
+            // Extract tag name
+            let name_start = pos;
+            while pos < bytes.len()
+                && bytes[pos] != b' '
+                && bytes[pos] != b'>'
+                && bytes[pos] != b'/'
+            {
                 pos += 1;
             }
-            pos += 1;
-            continue;
-        }
+            let tag_name = String::from_utf8_lossy(&bytes[name_start..pos]).to_lowercase();
 
-        // Skip comments
-        if pos + 2 < bytes.len()
-            && bytes[pos] == b'!'
-            && bytes[pos + 1] == b'-'
-            && bytes[pos + 2] == b'-'
-        {
-            while pos + 2 < bytes.len() {
-                if bytes[pos] == b'-' && bytes[pos + 1] == b'-' && bytes[pos + 2] == b'>' {
-                    pos += 3;
+            // Scan to end of open tag, capturing it (with attributes) verbatim
+            let mut self_closing = false;
+            while pos < bytes.len() {
+                if bytes[pos] == b'/' {
+                    self_closing = true;
+                }
+                if bytes[pos] == b'>' {
+                    pos += 1;
                     break;
                 }
                 pos += 1;
             }
-            continue;
-        }
+            let open_tag = String::from_utf8_lossy(&bytes[tag_start..pos]).to_string();
 
-        // Extract tag name
-        let name_start = pos;
-        while pos < bytes.len()
-            && bytes[pos] != b' '
-            && bytes[pos] != b'>'
-            && bytes[pos] != b'/'
-        {
-            pos += 1;
-        }
-        let tag_name = String::from_utf8_lossy(&bytes[name_start..pos]).to_lowercase();
-
-        // Skip attributes to find end of tag
-        let mut _self_closing = false;
-        while pos < bytes.len() {
-            if bytes[pos] == b'/' {
-                _self_closing = true;
-                pos += 1;
+            // Skip <head> section entirely (head elements handled by parse_head_elements)
+            if tag_name == "head" {
+                while pos < bytes.len() {
+                    if bytes[pos] == b'<' && pos + 1 < bytes.len() && bytes[pos + 1] == b'/' {
+                        let rest = String::from_utf8_lossy(&bytes[pos..]);
+                        if rest.to_lowercase().starts_with("</head>") {
+                            pos += 7;
+                            break;
+                        }
+                    }
+                    pos += 1;
+                }
                 continue;
             }
-            if bytes[pos] == b'>' {
-                pos += 1;
-                break;
-            }
-            pos += 1;
-        }
 
-        // Skip <head> section entirely (head elements handled by parse_head_elements)
-        if tag_name == "head" {
-            while pos < bytes.len() {
-                if bytes[pos] == b'<' && pos + 1 < bytes.len() && bytes[pos + 1] == b'/' {
-                    let rest = String::from_utf8_lossy(&bytes[pos..]);
-                    if rest.to_lowercase().starts_with("</head>") {
-                        pos += 7;
-                        break;
+            // Check if unsupported
+            if UNSUPPORTED_ELEMENTS.contains(&tag_name.as_str()) {
+                self.warnings.push(format!(
+                    "Unsupported element '<{}>' was skipped",
+                    tag_name
+                ));
+                continue;
+            }
+
+            // Extract class/style/generic attributes from the open tag
+            let (classes, styles, mut attrs) = build_node_extras(&open_tag);
+
+            // Map to SCM node
+            if BOX_ELEMENTS.contains(&tag_name.as_str()) {
+                let mut inner_children: Vec<Value> = Vec::new();
+                let depth = find_content_end(html, pos, &tag_name);
+                if depth > 0 {
+                    let inner_html = html[pos..pos + depth].to_string();
+                    self.parse_fragment(&inner_html, &mut inner_children);
+                }
+                let id = self.next_node_id();
+                children.push(json!({
+                    "id": id,
+                    "type": "box",
+                    "props": { "element": tag_name },
+                    "styles": styles,
+                    "classes": classes,
+                    "attrs": attrs,
+                    "children": inner_children
+                }));
+                // Skip past the closing tag so inner content isn't re-parsed
+                if !self_closing {
+                    let close_tag = format!("</{}>", tag_name);
+                    if let Some(end) = html[pos..].find(&close_tag) {
+                        pos += end + close_tag.len();
                     }
                 }
-                pos += 1;
+            } else if TEXT_ELEMENTS.contains(&tag_name.as_str()) {
+                let close_tag = format!("</{}>", tag_name);
+                let content_end = html[pos..].find(&close_tag).unwrap_or(0);
+                let raw = &html[pos..pos + content_end];
+                let value = strip_tags(raw).trim().to_string();
+                let id = self.next_node_id();
+                children.push(json!({
+                    "id": id,
+                    "type": "text",
+                    "props": { "element": tag_name, "value": value },
+                    "styles": styles,
+                    "classes": classes,
+                    "attrs": attrs,
+                    "children": []
+                }));
+                // Skip past the closing tag
+                if !self_closing && content_end > 0 {
+                    pos += content_end + close_tag.len();
+                }
+            } else if MEDIA_ELEMENTS.contains(&tag_name.as_str()) {
+                // Media players are leaf boxes; skip their fallback content
+                let id = self.next_node_id();
+                children.push(json!({
+                    "id": id,
+                    "type": "box",
+                    "props": { "element": tag_name },
+                    "styles": styles,
+                    "classes": classes,
+                    "attrs": attrs,
+                    "children": []
+                }));
+                if !self_closing {
+                    let close_tag = format!("</{}>", tag_name);
+                    if let Some(end) = html[pos..].find(&close_tag) {
+                        pos += end + close_tag.len();
+                    }
+                }
+            } else if tag_name == "img" {
+                let src = attrs
+                    .get("src")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let alt = attrs
+                    .get("alt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                // src/alt live in props for images; drop them from attrs
+                attrs.remove("src");
+                attrs.remove("alt");
+                let id = self.next_node_id();
+                children.push(json!({
+                    "id": id,
+                    "type": "image",
+                    "props": { "src": src, "alt": alt },
+                    "styles": styles,
+                    "classes": classes,
+                    "attrs": attrs,
+                    "children": []
+                }));
+            } else {
+                self.warnings.push(format!(
+                    "Unknown element '<{}>' was treated as text",
+                    tag_name
+                ));
             }
-            continue;
-        }
-
-        // Check if unsupported
-        if UNSUPPORTED_ELEMENTS.contains(&tag_name.as_str()) {
-            warnings.push(format!("Unsupported element '<{}>' was skipped", tag_name));
-            continue;
-        }
-
-        // Map to SCM node
-        if BOX_ELEMENTS.contains(&tag_name.as_str()) {
-            let mut inner_children: Vec<Value> = Vec::new();
-            // Parse content until closing tag (simplified)
-            let depth = find_content_end(html, pos, &tag_name);
-            if depth > 0 {
-                parse_html_fragment(&html[pos..pos + depth], &mut inner_children, warnings);
-            }
-            children.push(json!({
-                "id": format!("imp-{}", tag_name),
-                "type": "box",
-                "props": { "element": tag_name },
-                "styles": {},
-                "classes": [],
-                "children": inner_children
-            }));
-        } else if TEXT_ELEMENTS.contains(&tag_name.as_str()) {
-            // Extract text content until closing tag
-            let close_tag = format!("</{}>", tag_name);
-            let content_end = html[pos..].find(&close_tag).unwrap_or(0);
-            let text_content = html[pos..pos + content_end].trim();
-            children.push(json!({
-                "id": format!("imp-{}", tag_name),
-                "type": "text",
-                "props": { "element": tag_name, "value": text_content },
-                "styles": {},
-                "classes": [],
-                "children": []
-            }));
-        } else if tag_name == "img" {
-            // Extract src and alt
-            let tag_content = &html[tag_start..pos];
-            let src = extract_attr(tag_content, "src").unwrap_or_default();
-            let alt = extract_attr(tag_content, "alt").unwrap_or_default();
-            children.push(json!({
-                "id": "imp-img",
-                "type": "image",
-                "props": { "src": src, "alt": alt },
-                "styles": {},
-                "classes": [],
-                "children": []
-            }));
-        } else {
-            warnings.push(format!("Unknown element '<{}>' was treated as text", tag_name));
         }
     }
+}
+
+/// Extract all attributes from an open-tag string into `(name, value)` pairs.
+/// Handles double/single-quoted values, unquoted values, and bare boolean
+/// attributes (empty-string value). The leading `<tagname` token yields a
+/// name that never matches the whitelist and is harmlessly discarded.
+fn extract_all_attrs(tag: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let bytes = tag.as_bytes();
+    let mut i = 0;
+    // When given a full open tag ("<a href=…>"), the first token is the
+    // element name, not an attribute — discard it.
+    let mut skip_first_token = tag.starts_with('<');
+
+    while i < bytes.len() {
+        if bytes[i].is_ascii_whitespace() || bytes[i] == b'<' || bytes[i] == b'/' {
+            i += 1;
+            continue;
+        }
+
+        // Attribute name
+        let start = i;
+        while i < bytes.len()
+            && bytes[i] != b'='
+            && bytes[i] != b'>'
+            && !bytes[i].is_ascii_whitespace()
+        {
+            i += 1;
+        }
+        let name = tag[start..i].to_lowercase();
+
+        // Optional value
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        let value;
+        if i < bytes.len() && bytes[i] == b'=' {
+            i += 1;
+            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            if i < bytes.len() && (bytes[i] == b'"' || bytes[i] == b'\'') {
+                let quote = bytes[i];
+                i += 1;
+                let val_start = i;
+                while i < bytes.len() && bytes[i] != quote {
+                    i += 1;
+                }
+                value = tag[val_start..i].to_string();
+                if i < bytes.len() {
+                    i += 1; // closing quote
+                }
+            } else {
+                let val_start = i;
+                while i < bytes.len() && bytes[i] != b'>' && !bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                value = tag[val_start..i].to_string();
+            }
+        } else {
+            value = String::new();
+        }
+
+        if skip_first_token {
+            skip_first_token = false;
+            continue;
+        }
+
+        out.push((name, value));
+    }
+
+    out
+}
+
+/// Convert extracted attributes into `(classes, styles, attrs)` node data.
+/// Inline `style` declarations are parsed into the styles map; `class`
+/// becomes the class list; whitelisted (plus aria-/data-) names go to attrs.
+fn build_node_extras(
+    open_tag: &str,
+) -> (
+    Vec<String>,
+    serde_json::Map<String, Value>,
+    serde_json::Map<String, Value>,
+) {
+    let mut classes: Vec<String> = Vec::new();
+    let mut styles = serde_json::Map::new();
+    let mut attrs = serde_json::Map::new();
+
+    for (name, value) in extract_all_attrs(open_tag) {
+        match name.as_str() {
+            "class" => classes.extend(value.split_whitespace().map(|s| s.to_string())),
+            "style" => {
+                for decl in value.split(';') {
+                    if let Some((prop, val)) = decl.split_once(':') {
+                        let prop = prop.trim().to_lowercase();
+                        if !prop.is_empty() {
+                            styles.insert(prop, json!(val.trim()));
+                        }
+                    }
+                }
+            }
+            other => {
+                let keep = KNOWN_ATTRS.contains(&other)
+                    || other.starts_with("aria-")
+                    || other.starts_with("data-");
+                if keep {
+                    attrs.insert(other.to_string(), json!(value));
+                }
+            }
+        }
+    }
+
+    (classes, styles, attrs)
+}
+
+/// Remove markup tags from an HTML snippet, keeping text content.
+fn strip_tags(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut inside = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => inside = true,
+            '>' => inside = false,
+            c if !inside => out.push(c),
+            _ => {}
+        }
+    }
+    out
 }
 
 fn find_content_end(html: &str, start: usize, tag_name: &str) -> usize {
@@ -531,5 +736,109 @@ mod tests {
 
         assert_eq!(head[1]["type"], "style");
         assert_eq!(head[1]["css"], "body { margin: 0; }");
+    }
+
+    #[test]
+    fn extract_all_attrs_works() {
+        let attrs = extract_all_attrs(r#"<a href="/x" target='_blank' disabled data-id="7">"#);
+        assert_eq!(attrs[0], ("href".to_string(), "/x".to_string()));
+        assert_eq!(attrs[1], ("target".to_string(), "_blank".to_string()));
+        assert_eq!(attrs[2], ("disabled".to_string(), String::new()));
+        assert_eq!(attrs[3], ("data-id".to_string(), "7".to_string()));
+    }
+
+    #[test]
+    fn import_parses_new_base_components() {
+        let html = r#"<!DOCTYPE html>
+<html>
+<head><title>T</title></head>
+<body>
+<div class="hero" style="padding: 2rem;">
+    <nav role="navigation">
+        <a href="/about">About</a>
+        <a href="/ext" target="_blank" rel="noopener">Ext</a>
+    </nav>
+    <ul>
+        <li>First</li>
+        <li>Second</li>
+    </ul>
+    <button type="submit" disabled>Go</button>
+    <video src="./media/v.mp4" controls muted></video>
+    <form><input></form>
+</div>
+</body>
+</html>"#;
+
+        let result = import_html(html).unwrap();
+        let page = &result["page"];
+        let hero = &page["root"]["children"][0];
+
+        // class + inline style extraction
+        assert_eq!(hero["classes"][0], "hero");
+        assert_eq!(hero["styles"]["padding"], "2rem");
+
+        let nav = &hero["children"][0];
+        assert_eq!(nav["props"]["element"], "nav");
+        assert_eq!(nav["attrs"]["role"], "navigation");
+        assert_eq!(nav["children"].as_array().unwrap().len(), 2);
+
+        let link0 = &nav["children"][0];
+        assert_eq!(link0["type"], "text");
+        assert_eq!(link0["props"]["element"], "a");
+        assert_eq!(link0["props"]["value"], "About");
+        assert_eq!(link0["attrs"]["href"], "/about");
+
+        let link1 = &nav["children"][1];
+        assert_eq!(link1["attrs"]["target"], "_blank");
+        assert_eq!(link1["attrs"]["rel"], "noopener");
+
+        let list = &hero["children"][1];
+        assert_eq!(list["props"]["element"], "ul");
+        let items = list["children"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["props"]["element"], "li");
+        assert_eq!(items[0]["props"]["value"], "First");
+
+        let button = &hero["children"][2];
+        assert_eq!(button["props"]["element"], "button");
+        assert_eq!(button["attrs"]["type"], "submit");
+        assert_eq!(button["attrs"]["disabled"], "");
+
+        let video = &hero["children"][3];
+        assert_eq!(video["type"], "box");
+        assert_eq!(video["props"]["element"], "video");
+        assert_eq!(video["attrs"]["src"], "./media/v.mp4");
+        assert_eq!(video["attrs"]["controls"], "");
+        assert_eq!(video["attrs"]["muted"], "");
+        assert_eq!(video["children"].as_array().unwrap().len(), 0);
+
+        // form/input unsupported warning
+        let warnings = result["warnings"].as_array().unwrap();
+        assert!(warnings.iter().any(|w| w.as_str().unwrap().contains("form")));
+        assert!(warnings.iter().any(|w| w.as_str().unwrap().contains("input")));
+    }
+
+    #[test]
+    fn import_generates_unique_ids() {
+        let html = r#"<body><div><p>A</p></div><div><p>B</p></div><img src="./x.png" alt="x"></body>"#;
+        let result = import_html(html).unwrap();
+        let children = result["page"]["root"]["children"].as_array().unwrap();
+        assert_eq!(children.len(), 3);
+
+        let mut ids: Vec<String> = Vec::new();
+        fn collect(node: &Value, out: &mut Vec<String>) {
+            out.push(node["id"].as_str().unwrap_or_default().to_string());
+            if let Some(kids) = node["children"].as_array() {
+                for k in kids {
+                    collect(k, out);
+                }
+            }
+        }
+        collect(&result["page"]["root"], &mut ids);
+
+        let total = ids.len();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), total, "node ids must be unique");
     }
 }

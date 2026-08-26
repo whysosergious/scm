@@ -1304,19 +1304,80 @@ input[type="text"].title-input.invalid {
   gap: 8px;
 }
 
-/* Four-column layout: palette | tree | canvas | inspector */
+/* Two-column layout: canvas | tabbed right panel */
 .page-columns {
   display: grid;
-  grid-template-columns: 160px 200px 1fr 260px;
+  grid-template-columns: 1fr 300px;
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
 
+/* Tabbed right panel */
+.page-right-panel {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--color-outline-variant);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.panel-tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--color-outline-variant);
+  background: var(--color-surface);
+  flex-shrink: 0;
+}
+
+.panel-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-on-surface-variant);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.panel-tab:hover {
+  color: var(--color-on-surface);
+  background: var(--color-surface-variant);
+}
+
+.panel-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.panel-tab span {
+  font-size: 11px;
+}
+
+.panel-tab-content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.panel-tab-pane {
+  padding: 8px;
+  height: 100%;
+}
+
 /* Palette */
 .page-palette {
   padding: 10px;
-  border-right: 1px solid var(--color-outline-variant);
   overflow-y: auto;
 }
 
@@ -1514,6 +1575,28 @@ input[type="text"].title-input.invalid {
   font-size: 10px;
 }
 
+/* Palette section headings */
+.palette-section {
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+
+/* Media components on canvas: native players inside selectable wrapper */
+.canvas-media video,
+.canvas-media audio {
+  display: block;
+  min-width: 240px;
+  min-height: 44px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+/* Checkbox inputs inside inspector rows align without stretching */
+.inspector-css-row input[type='checkbox'] {
+  width: auto;
+  flex-shrink: 0;
+}
+
 /* Page nodes: actual rendered elements */
 .canvas-page-node {
   min-height: 1em;
@@ -1590,6 +1673,34 @@ input[type="text"].title-input.invalid {
   pointer-events: none;
 }
 
+/* Tree "+" button */
+.tree-add-child {
+  display: none;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: bold;
+  margin-left: auto;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tree-item:hover > .tree-add-child {
+  display: flex;
+}
+
+.tree-add-child:hover {
+  background: var(--color-primary-container);
+  color: var(--color-primary);
+}
+
 /* Drop target indicators */
 .canvas-page-node.drop-target {
   outline: 2px solid var(--color-primary);
@@ -1660,7 +1771,6 @@ input[type="text"].title-input.invalid {
 /* Inspector */
 .page-inspector {
   padding: 12px;
-  border-left: 1px solid var(--color-outline-variant);
   overflow-y: auto;
 }
 
@@ -1848,11 +1958,15 @@ select.inspector-css-value {
   color: var(--color-error);
 }
 
+.inspector-class-style-editor {
+  border-left: 2px solid var(--color-outline-variant);
+  margin-left: 4px;
+}
+
 /* ==================== DOM TREE PANEL ==================== */
 
 .page-tree {
   overflow-y: auto;
-  border-right: 1px solid var(--color-outline-variant);
   padding: 0;
   height: 100%;
 }
@@ -1889,6 +2003,11 @@ select.inspector-css-value {
 
 .tree-item.selected {
   background: var(--color-primary-container);
+}
+
+.tree-item.focused {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 .tree-badge {

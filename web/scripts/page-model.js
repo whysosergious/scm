@@ -9,6 +9,7 @@
  * @property {Object<string, *>} props - Type-specific properties (element, value, src, alt, etc.).
  * @property {Object<string, string>} [styles] - Inline CSS styles.
  * @property {string[]} [classes] - CSS class names.
+ * @property {Object<string, string>} [attrs] - HTML attributes (href, target, src, controls, …).
  * @property {PageNode[]} [children] - Child nodes (only for box type).
  */
 
@@ -44,10 +45,13 @@ let nextId = 1;
 export const NODE_TYPES = ['box', 'text', 'image'];
 
 /** @type {string[]} HTML elements allowed for box nodes. */
-export const BOX_ELEMENTS = ['div', 'section', 'header', 'main', 'footer', 'article', 'aside'];
+export const BOX_ELEMENTS = ['div', 'section', 'header', 'main', 'footer', 'article', 'aside', 'nav', 'ul', 'ol', 'video', 'audio'];
 
 /** @type {string[]} HTML elements allowed for text nodes. */
-export const TEXT_ELEMENTS = ['p', 'h1', 'h2', 'h3', 'span', 'blockquote'];
+export const TEXT_ELEMENTS = ['p', 'h1', 'h2', 'h3', 'span', 'blockquote', 'a', 'button', 'li'];
+
+/** @type {string[]} Box elements rendered as native media players (leaf nodes). */
+export const MEDIA_ELEMENTS = ['video', 'audio'];
 
 // ================== NESTING RULES ==================
 
@@ -62,23 +66,36 @@ export const TEXT_ELEMENTS = ['p', 'h1', 'h2', 'h3', 'span', 'blockquote'];
  * @returns {boolean} True if the child can nest inside the parent.
  */
 export function canNest(parentType, parentElement, childType, childElement) {
+  const parentEl = parentElement || '';
+
+  // Media players are leaf nodes — nothing nests inside video/audio
+  if (parentType === 'box' && (parentEl === 'video' || parentEl === 'audio')) {
+    return false;
+  }
+
   if (childType === 'image') return true; // Image goes anywhere valid
 
   switch (parentType) {
     case 'box':
+      // Lists accept only list items
+      if (parentEl === 'ul' || parentEl === 'ol') {
+        return childType === 'text' && childElement === 'li';
+      }
       // Flow containers accept Box and Text (any element)
       if (childType === 'box') return true;
       if (childType === 'text') return true;
       return false;
 
     case 'text': {
-      // Phrasing containers accept only Text(span)
-      const el = parentElement || 'p';
-      if (el === 'span') {
-        return childType === 'text' && childElement === 'span';
-      }
-      // p, h1, h2, h3, blockquote accept only Text(span)
-      return childType === 'text' && childElement === 'span';
+      if (childType !== 'text') return false;
+      const child = childElement || 'span';
+      // No links nested inside links
+      if (parentEl === 'a' && child === 'a') return false;
+      // Spans are valid inline phrasing everywhere
+      if (child === 'span') return true;
+      // Links are valid inside phrasing content (headings, paragraphs, list items)
+      if (child === 'a') return ['p', 'h1', 'h2', 'h3', 'blockquote', 'li'].includes(parentEl);
+      return false;
     }
 
     default:
@@ -104,6 +121,7 @@ export function createNode(type, props = {}, element) {
     props: { ...props },
     styles: {},
     classes: [],
+    attrs: {},
     children: [],
   };
   if (type === 'box') {

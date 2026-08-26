@@ -94,6 +94,41 @@ const CSS_PROPS = [
 const CSS_PROP_MAP = Object.fromEntries(CSS_PROPS.map((p) => [p.key, p]));
 
 /**
+ * @typedef {Object} AttrDef
+ * @property {string} key - Attribute name.
+ * @property {string} label - Display label.
+ * @property {string[]} [applies] - Elements this attribute applies to (all elements when omitted).
+ * @property {'text'|'select'|'bool'} [type] - Input type (default 'text').
+ * @property {string[]} [options] - Select options for select inputs.
+ * @property {string} [placeholder] - Placeholder text for text inputs.
+ */
+
+/** @type {AttrDef[]} Known HTML attributes offered by the attribute picker. */
+const ATTR_DEFS = [
+  { key: 'href', label: 'href', applies: ['a'], placeholder: './page.html or https://…' },
+  { key: 'target', label: 'target', applies: ['a'], type: 'select', options: ['_self', '_blank', '_parent', '_top'] },
+  { key: 'rel', label: 'rel', applies: ['a'], placeholder: 'noopener' },
+  { key: 'download', label: 'download', applies: ['a'], placeholder: 'filename' },
+  { key: 'type', label: 'type', applies: ['button'], placeholder: 'button' },
+  { key: 'disabled', label: 'disabled', type: 'bool', applies: ['button'] },
+  { key: 'src', label: 'src', applies: ['video', 'audio'], placeholder: './media/file.mp4' },
+  { key: 'controls', label: 'controls', type: 'bool', applies: ['video', 'audio'] },
+  { key: 'autoplay', label: 'autoplay', type: 'bool', applies: ['video', 'audio'] },
+  { key: 'loop', label: 'loop', type: 'bool', applies: ['video', 'audio'] },
+  { key: 'muted', label: 'muted', type: 'bool', applies: ['video'] },
+  { key: 'preload', label: 'preload', applies: ['video', 'audio'], type: 'select', options: ['auto', 'metadata', 'none'] },
+  { key: 'poster', label: 'poster', applies: ['video'], placeholder: './media/poster.jpg' },
+  { key: 'title', label: 'title', placeholder: 'tooltip' },
+  { key: 'role', label: 'role', placeholder: 'navigation' },
+  { key: 'tabindex', label: 'tabindex', placeholder: '0' },
+  { key: 'aria-label', label: 'aria-label', placeholder: '' },
+  { key: 'aria-hidden', label: 'aria-hidden', placeholder: 'true' },
+];
+
+/** @type {Set<string>} Attributes rendered/treated as presence-only flags (empty-string value). */
+const BOOLEAN_ATTRS = new Set(['disabled', 'controls', 'autoplay', 'loop', 'muted']);
+
+/**
  * Renders the inspector panel showing selected node properties, CSS styles, and class assignment.
  * @param {HTMLElement} root - Container element to render the inspector into.
  * @param {Object|null} doc - Page document with root node tree and classes array.
@@ -217,6 +252,97 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
     }
   }
 
+  // Element-specific quick fields backed by node.attrs
+  if (!node.attrs) node.attrs = {};
+  const elementName = (node.props && node.props.element) || '';
+  const attrFieldRows = [];
+
+  /**
+   * Builds an input bound to node.attrs[key] (checkbox/select/text per def).
+   * @param {string} key - Attribute name to bind.
+   * @param {AttrDef|null} def - Attribute definition shaping the input.
+   * @returns {HTMLInputElement|HTMLSelectElement} The bound input element.
+   */
+  function makeAttrInput(key, def) {
+    if (def && def.type === 'bool') {
+      const cb = el('input', { type: 'checkbox' });
+      cb.checked = key in node.attrs;
+      cb.addEventListener('change', () => {
+        if (cb.checked) node.attrs[key] = '';
+        else delete node.attrs[key];
+        onChange();
+      });
+      return cb;
+    }
+    if (def && def.type === 'select') {
+      const sel = el('select', { class: 'value-input' });
+      for (const opt of def.options) {
+        const o = el('option', { value: opt, text: opt });
+        if ((node.attrs[key] || '') === opt) o.selected = true;
+        sel.append(o);
+      }
+      sel.addEventListener('change', () => {
+        if (sel.value) node.attrs[key] = sel.value;
+        else delete node.attrs[key];
+        onChange();
+      });
+      return sel;
+    }
+    const input = el('input', {
+      type: 'text',
+      class: 'value-input',
+      value: node.attrs[key] || '',
+      placeholder: (def && def.placeholder) || '',
+    });
+    input.addEventListener('input', () => {
+      if (input.value) node.attrs[key] = input.value;
+      else delete node.attrs[key];
+      onChange();
+    });
+    return input;
+  }
+
+  /**
+   * Appends a labelled attribute row to the pending quick-field list.
+   * @param {string} labelText - Row label.
+   * @param {string} key - Attribute name to bind.
+   * @param {AttrDef|null} def - Attribute definition shaping the input.
+   * @returns {void}
+   */
+  function pushAttrRow(labelText, key, def) {
+    attrFieldRows.push(el('div', { class: 'inspector-css-row' },
+      el('span', { class: 'inspector-css-label', text: labelText }),
+      makeAttrInput(key, def),
+    ));
+  }
+
+  if (elementName === 'a') {
+    pushAttrRow('Href', 'href', ATTR_DEFS.find((d) => d.key === 'href'));
+    pushAttrRow('Target', 'target', ATTR_DEFS.find((d) => d.key === 'target'));
+  }
+  if (elementName === 'button') {
+    pushAttrRow('Type', 'type', { key: 'type', type: 'select', options: ['button', 'submit', 'reset'] });
+    pushAttrRow('Disabled', 'disabled', ATTR_DEFS.find((d) => d.key === 'disabled'));
+  }
+  if (elementName === 'video' || elementName === 'audio') {
+    pushAttrRow('Source', 'src', ATTR_DEFS.find((d) => d.key === 'src'));
+    pushAttrRow('Controls', 'controls', ATTR_DEFS.find((d) => d.key === 'controls'));
+    pushAttrRow('Autoplay', 'autoplay', ATTR_DEFS.find((d) => d.key === 'autoplay'));
+    pushAttrRow('Loop', 'loop', ATTR_DEFS.find((d) => d.key === 'loop'));
+    if (elementName === 'video') {
+      pushAttrRow('Muted', 'muted', ATTR_DEFS.find((d) => d.key === 'muted'));
+      pushAttrRow('Poster', 'poster', ATTR_DEFS.find((d) => d.key === 'poster'));
+    }
+  }
+
+  if (attrFieldRows.length > 0) {
+    root.append(el('div', { class: 'inspector-divider' }));
+    root.append(el('div', { class: 'inspector-section' },
+      el('label', { text: elementName === 'a' ? 'Link' : 'Media' }),
+    ));
+    for (const row of attrFieldRows) root.append(row);
+  }
+
   // CSS Styles
   root.append(el('div', { class: 'inspector-divider' }));
   root.append(el('div', { class: 'inspector-section' },
@@ -297,15 +423,76 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
   renderStyles();
   root.append(stylesContainer);
 
-  // Reusable classes
+  // ================== HTML ATTRIBUTES ==================
+  root.append(el('div', { class: 'inspector-divider' }));
+  root.append(el('div', { class: 'inspector-section' },
+    el('label', { text: 'Attributes' }),
+  ));
+
+  const attrsContainer = el('div', { class: 'inspector-styles' });
+
+  /** Re-renders the generic attribute rows from node.attrs. */
+  function renderAttrs() {
+    attrsContainer.textContent = '';
+
+    for (const [key, val] of Object.entries(node.attrs)) {
+      const row = el('div', { class: 'inspector-css-row', 'data-attr-key': key });
+
+      row.append(el('span', { class: 'inspector-css-label', text: key }));
+
+      let input;
+      if (BOOLEAN_ATTRS.has(key)) {
+        input = el('input', { type: 'checkbox', title: 'Uncheck to remove' });
+        input.checked = true;
+        input.addEventListener('change', () => {
+          delete node.attrs[key];
+          onChange();
+          renderAttrs();
+        });
+      } else {
+        input = el('input', {
+          type: 'text',
+          class: 'value-input inspector-css-value',
+          value: String(val ?? ''),
+        });
+        input.addEventListener('focus', () => input.select());
+        input.addEventListener('input', () => {
+          node.attrs[key] = input.value;
+          onChange();
+        });
+      }
+      row.append(input);
+
+      row.append(el('button', {
+        class: 'inspector-css-remove',
+        title: 'Remove',
+        onclick: () => {
+          delete node.attrs[key];
+          onChange();
+          renderAttrs();
+        },
+      }, icon('close', 14)));
+
+      attrsContainer.append(row);
+    }
+
+    const addBtn = el('button', { class: 'btn-add-menu' }, icon('add', 14), el('span', { text: 'Add attribute' }));
+    addBtn.addEventListener('click', () => showAttrPicker(attrsContainer, addBtn, node, onChange, renderAttrs));
+    attrsContainer.append(addBtn);
+  }
+
+  renderAttrs();
+  root.append(attrsContainer);
+
+  // Reusable classes (assignment)
+  root.append(el('div', { class: 'inspector-divider' }));
+  root.append(el('div', { class: 'inspector-section' },
+    el('label', { text: 'Classes' }),
+  ));
+
+  if (!node.classes) node.classes = [];
+
   if (doc.classes && doc.classes.length > 0) {
-    root.append(el('div', { class: 'inspector-divider' }));
-    root.append(el('div', { class: 'inspector-section' },
-      el('label', { text: 'Classes' }),
-    ));
-
-    if (!node.classes) node.classes = [];
-
     for (const cls of doc.classes) {
       const assigned = node.classes.includes(cls.name);
       const label = el('label', { class: 'inspector-class-item' });
@@ -322,7 +509,157 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
       label.append(cb, el('span', { text: cls.label || cls.name }));
       root.append(label);
     }
+  } else {
+    root.append(el('div', { class: 'muted-note', style: { fontSize: '11px', padding: '2px 0' }, text: 'No classes defined yet' }));
   }
+
+  // Class management (create / edit / delete)
+  root.append(el('div', { class: 'inspector-divider' }));
+  root.append(el('div', { class: 'inspector-section' },
+    el('label', { text: 'Manage Classes' }),
+  ));
+
+  const classContainer = el('div', { class: 'inspector-styles' });
+
+  function renderClassList() {
+    classContainer.textContent = '';
+    if (!doc.classes) doc.classes = [];
+
+    for (let ci = 0; ci < doc.classes.length; ci++) {
+      const cls = doc.classes[ci];
+      const row = el('div', { class: 'inspector-css-row', 'data-class-idx': String(ci) });
+
+      // Name input
+      const nameInput = el('input', {
+        type: 'text',
+        class: 'value-input inspector-css-value',
+        value: cls.name || '',
+        placeholder: 'class-name',
+        style: { fontFamily: 'monospace', fontSize: '11px' },
+      });
+      nameInput.addEventListener('input', () => {
+        const oldName = cls.name;
+        const newName = nameInput.value.trim();
+        cls.name = newName;
+        // Update references on nodes
+        if (oldName && newName && oldName !== newName) {
+          for (const n of allNodes(doc.root)) {
+            if (n.classes) n.classes = n.classes.map((c) => c === oldName ? newName : c);
+          }
+        }
+        onChange();
+      });
+
+      row.append(nameInput);
+
+      // Edit styles button
+      const stylesBtn = el('button', {
+        class: 'inspector-css-remove',
+        title: 'Edit class styles',
+        style: { display: 'flex' },
+      }, icon('palette', 14));
+      row.append(stylesBtn);
+
+      // Delete button
+      const delBtn = el('button', {
+        class: 'inspector-css-remove',
+        title: 'Delete class',
+        style: { display: 'flex' },
+      }, icon('close', 14));
+      delBtn.addEventListener('click', () => {
+        if (cls.name && node.classes) {
+          node.classes = node.classes.filter((c) => c !== cls.name);
+        }
+        doc.classes.splice(ci, 1);
+        onChange();
+        renderClassList();
+      });
+      row.append(delBtn);
+
+      classContainer.append(row);
+
+      // Inline style editor (toggle on button click)
+      let styleSection = null;
+      stylesBtn.addEventListener('click', () => {
+        if (styleSection) { styleSection.remove(); styleSection = null; return; }
+        styleSection = el('div', { class: 'inspector-class-style-editor', style: { paddingLeft: '8px', paddingBottom: '4px' } });
+
+        const labelInput = el('input', {
+          type: 'text',
+          class: 'value-input',
+          value: cls.label || '',
+          placeholder: 'Display label (optional)',
+        });
+        labelInput.addEventListener('input', () => { cls.label = labelInput.value; onChange(); renderClassList(); });
+        styleSection.append(el('div', { class: 'inspector-css-row' }, el('span', { class: 'inspector-css-label', text: 'label' }), labelInput));
+
+        const descInput = el('input', {
+          type: 'text',
+          class: 'value-input',
+          value: cls.description || '',
+          placeholder: 'Description (optional)',
+        });
+        descInput.addEventListener('input', () => { cls.description = descInput.value; onChange(); });
+        styleSection.append(el('div', { class: 'inspector-css-row' }, el('span', { class: 'inspector-css-label', text: 'desc' }), descInput));
+
+        // CSS properties for this class
+        if (!cls.styles) cls.styles = {};
+        const keys = Object.keys(cls.styles).filter((k) => cls.styles[k] !== '');
+
+        for (const key of keys) {
+          const val = cls.styles[key];
+          const prop = CSS_PROP_MAP[key];
+          const prow = el('div', { class: 'inspector-css-row' });
+          prow.append(el('span', { class: 'inspector-css-label', text: prop ? prop.label : key }));
+
+          let input;
+          if (prop && prop.type === 'select') {
+            input = el('select', { class: 'value-input inspector-css-value' });
+            for (const opt of prop.options) {
+              const o = el('option', { value: opt, text: opt });
+              if (opt === val) o.selected = true;
+              input.append(o);
+            }
+          } else {
+            input = el('input', { type: 'text', class: 'value-input inspector-css-value', value: val, placeholder: prop?.placeholder || '' });
+          }
+          input.addEventListener('input', () => {
+            if (input.value) cls.styles[key] = input.value;
+            else delete cls.styles[key];
+            onChange();
+          });
+          prow.append(input);
+
+          prow.append(el('button', {
+            class: 'inspector-css-remove',
+            title: 'Remove',
+            onclick: () => { delete cls.styles[key]; onChange(); renderClassList(); stylesBtn.click(); stylesBtn.click(); },
+          }, icon('close', 14)));
+          styleSection.append(prow);
+        }
+
+        // Add style button for this class
+        const addStyleBtn = el('button', { class: 'btn-add-menu' }, icon('add', 14), el('span', { text: 'Add style' }));
+        addStyleBtn.addEventListener('click', () => showClassPropertyPicker(styleSection, addStyleBtn, cls, () => { onChange(); renderClassList(); stylesBtn.click(); stylesBtn.click(); }));
+        styleSection.append(addStyleBtn);
+
+        row.after(styleSection);
+      });
+    }
+
+    // Add class button
+    const addClassBtn = el('button', { class: 'btn-add-menu' }, icon('add', 14), el('span', { text: 'Add class' }));
+    addClassBtn.addEventListener('click', () => {
+      const name = 'class-' + (doc.classes.length + 1);
+      doc.classes.push({ name, label: '', description: '', styles: {} });
+      onChange();
+      renderClassList();
+    });
+    classContainer.append(addClassBtn);
+  }
+
+  renderClassList();
+  root.append(classContainer);
 
   // Delete button
   if (node.id !== 'root') {
@@ -554,6 +891,153 @@ export function renderHeadInspector(root, doc, headIndex, onChange, onRemove) {
  * @param {function(): void} renderStyles - Callback to re-render the styles list.
  * @returns {void}
  */
+/**
+ * Opens a searchable attribute picker filtered to the node's element.
+ * Suggests known attributes first; a free-form name matching valid attribute
+ * syntax gets an "Add custom" entry.
+ * Reuses the CSS property picker styles (.css-property-picker).
+ * @param {HTMLElement} container - Container holding the attribute rows.
+ * @param {HTMLElement} addBtn - The "Add attribute" button the picker anchors to.
+ * @param {Object} node - Page node whose attrs will be modified.
+ * @param {function(): void} onChange - Change callback.
+ * @param {function(): void} renderAttrs - Re-render callback for the rows.
+ * @returns {void}
+ */
+function showAttrPicker(container, addBtn, node, onChange, renderAttrs) {
+  container.querySelector('.css-property-picker')?.remove();
+
+  const elementName = (node.props && node.props.element) || '';
+  const usedKeys = new Set(Object.keys(node.attrs || {}));
+  const relevant = (def) =>
+    (!def.applies || def.applies.includes(elementName)) && !usedKeys.has(def.key);
+
+  let highlightIdx = -1;
+  let filteredItems = [];
+
+  const VALID_NAME = /^[a-zA-Z_][a-zA-Z0-9_:.-]*$/;
+
+  const picker = el('div', { class: 'css-property-picker' });
+  const search = el('input', {
+    type: 'text',
+    class: 'value-input css-picker-search',
+    placeholder: 'Search or type name…',
+  });
+  const list = el('div', { class: 'css-picker-list' });
+
+  function renderList(filter = '') {
+    list.textContent = '';
+    highlightIdx = -1;
+    const lower = filter.toLowerCase();
+    filteredItems = ATTR_DEFS.filter((d) =>
+      relevant(d) &&
+      (d.label.toLowerCase().includes(lower) || d.key.toLowerCase().includes(lower))
+    );
+
+    for (let i = 0; i < filteredItems.length; i++) {
+      const def = filteredItems[i];
+      const kind = def.type === 'bool' ? 'flag' : def.type === 'select' ? 'select' : 'value';
+      const item = el('div', { class: 'css-picker-item', 'data-idx': i },
+        el('span', { class: 'css-picker-item-name', text: def.label }),
+        el('span', { class: 'css-picker-item-type muted-note', text: kind }),
+      );
+      item.addEventListener('click', () => pickAttr(def));
+      item.addEventListener('mouseenter', () => setHighlight(i));
+      list.append(item);
+    }
+
+    // Custom attribute entry for free-form valid names
+    const trimmed = filter.trim();
+    if (
+      trimmed && VALID_NAME.test(trimmed) &&
+      !usedKeys.has(trimmed) &&
+      !filteredItems.some((d) => d.key === trimmed)
+    ) {
+      const idx = filteredItems.length;
+      filteredItems.push({ key: trimmed, custom: true });
+      const item = el('div', { class: 'css-picker-item', 'data-idx': idx },
+        el('span', { class: 'css-picker-item-name', text: `Add custom "${trimmed}"` }),
+        el('span', { class: 'css-picker-item-type muted-note', text: 'custom' }),
+      );
+      item.addEventListener('click', () => pickCustom(trimmed));
+      item.addEventListener('mouseenter', () => setHighlight(idx));
+      list.append(item);
+    }
+
+    if (filteredItems.length === 0) {
+      list.append(el('div', { class: 'css-picker-empty muted-note', text: 'No matching attributes' }));
+    } else {
+      setHighlight(0);
+    }
+  }
+
+  function setHighlight(idx) {
+    highlightIdx = idx;
+    list.querySelectorAll('.css-picker-item').forEach((item, i) => {
+      item.classList.toggle('highlighted', i === idx);
+    });
+    const highlighted = list.querySelector('.highlighted');
+    if (highlighted) highlighted.scrollIntoView({ block: 'nearest' });
+  }
+
+  function commitKey(key) {
+    node.attrs[key] = '';
+    onChange();
+    picker.remove();
+    document.removeEventListener('mousedown', closeHandler);
+    renderAttrs();
+    requestAnimationFrame(() => {
+      const row = container.querySelector(`[data-attr-key="${CSS.escape(key)}"]`);
+      const input = row?.querySelector('input[type="text"], select');
+      if (input) input.focus();
+    });
+  }
+
+  function pickAttr(def) { commitKey(def.key); }
+  function pickCustom(name) { commitKey(name); }
+
+  search.addEventListener('input', () => renderList(search.value));
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlight(Math.min(highlightIdx + 1, filteredItems.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlight(Math.max(highlightIdx - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const item = filteredItems[highlightIdx];
+      if (!item) return;
+      if (item.custom) pickCustom(item.key);
+      else pickAttr(item);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      picker.remove();
+      document.removeEventListener('mousedown', closeHandler);
+    }
+  });
+
+  picker.append(search, list);
+  addBtn.before(picker);
+
+  // Flip to drop-up if not enough space below
+  const pickerRect = picker.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - pickerRect.bottom;
+  if (spaceBelow < 180) {
+    picker.classList.add('drop-up');
+  }
+
+  search.focus();
+  renderList();
+
+  const closeHandler = (e) => {
+    if (!picker.contains(e.target)) {
+      picker.remove();
+      document.removeEventListener('mousedown', closeHandler);
+    }
+  };
+  document.addEventListener('mousedown', closeHandler);
+}
+
 function showPropertyPicker(container, addBtn, node, onChange, renderStyles) {
   container.querySelector('.css-property-picker')?.remove();
 
@@ -660,4 +1144,123 @@ function showPropertyPicker(container, addBtn, node, onChange, renderStyles) {
     }
   };
   setTimeout(() => document.addEventListener('click', closeHandler), 0);
+}
+
+/**
+ * Yields all nodes in the tree (depth-first).
+ * @param {Object} node
+ * @returns {Generator<Object>}
+ */
+function* allNodes(node) {
+  yield node;
+  if (node.children) {
+    for (const child of node.children) yield* allNodes(child);
+  }
+}
+
+/**
+ * Shows a CSS property picker for editing a reusable class's styles.
+ * @param {HTMLElement} container
+ * @param {HTMLElement} addBtn
+ * @param {Object} cls - Class object with styles.
+ * @param {function(): void} onCommit
+ * @returns {void}
+ */
+function showClassPropertyPicker(container, addBtn, cls, onCommit) {
+  container.querySelector('.css-property-picker')?.remove();
+
+  const usedKeys = new Set(Object.keys(cls.styles || {}));
+  const available = CSS_PROPS.filter((p) => !usedKeys.has(p.key));
+
+  let highlightIdx = -1;
+  let filteredItems = [];
+
+  const picker = el('div', { class: 'css-property-picker' });
+  const search = el('input', {
+    type: 'text',
+    class: 'value-input css-picker-search',
+    placeholder: 'Type to search...',
+  });
+  const list = el('div', { class: 'css-picker-list' });
+
+  function renderList(filter = '') {
+    list.textContent = '';
+    highlightIdx = -1;
+    const lower = filter.toLowerCase();
+    filteredItems = available.filter((p) =>
+      !usedKeys.has(p.key) && (p.label.toLowerCase().includes(lower) || p.key.toLowerCase().includes(lower))
+    );
+
+    for (let i = 0; i < filteredItems.length; i++) {
+      const prop = filteredItems[i];
+      const item = el('div', { class: 'css-picker-item', 'data-idx': i },
+        el('span', { class: 'css-picker-item-name', text: prop.label }),
+        el('span', { class: 'css-picker-item-type muted-note', text: prop.type === 'select' ? 'select' : 'value' }),
+      );
+      item.addEventListener('click', () => pickProperty(prop));
+      item.addEventListener('mouseenter', () => setHighlight(i));
+      list.append(item);
+    }
+
+    if (filteredItems.length === 0) {
+      list.append(el('div', { class: 'css-picker-empty muted-note', text: 'No matching properties' }));
+    } else {
+      setHighlight(0);
+    }
+  }
+
+  function setHighlight(idx) {
+    highlightIdx = idx;
+    list.querySelectorAll('.css-picker-item').forEach((item, i) => {
+      item.classList.toggle('highlighted', i === idx);
+    });
+    const highlighted = list.querySelector('.highlighted');
+    if (highlighted) highlighted.scrollIntoView({ block: 'nearest' });
+  }
+
+  function pickProperty(prop) {
+    const defaultVal = prop.placeholder || (prop.type === 'select' ? prop.options[0] : 'unset');
+    cls.styles[prop.key] = defaultVal;
+    onCommit();
+    picker.remove();
+    document.removeEventListener('mousedown', closeHandler);
+  }
+
+  search.addEventListener('input', () => renderList(search.value));
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlight(Math.min(highlightIdx + 1, filteredItems.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlight(Math.max(highlightIdx - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightIdx >= 0 && highlightIdx < filteredItems.length) {
+        pickProperty(filteredItems[highlightIdx]);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      picker.remove();
+      document.removeEventListener('mousedown', closeHandler);
+    }
+  });
+
+  picker.append(search, list);
+  addBtn.before(picker);
+
+  const pickerRect = picker.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - pickerRect.bottom;
+  if (spaceBelow < 180) picker.classList.add('drop-up');
+
+  search.focus();
+  renderList();
+
+  const closeHandler = (e) => {
+    if (!picker.contains(e.target) && e.target !== addBtn) {
+      picker.remove();
+      document.removeEventListener('mousedown', closeHandler);
+    }
+  };
+  setTimeout(() => document.addEventListener('mousedown', closeHandler), 0);
 }
