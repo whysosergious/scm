@@ -4,6 +4,7 @@
 import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
 import { selectedProject } from '../state.js';
+import { renderDimensionsPanel, renderSidesPanel } from './page-boxmodel.js';
 
 /**
  * Resolves an image source path relative to the selected project's files endpoint.
@@ -422,6 +423,34 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
 
   renderStyles();
   root.append(stylesContainer);
+
+  // ================== BOX MODEL (dimensions + padding + margin) ==================
+  root.append(el('div', { class: 'inspector-divider' }));
+  root.append(el('div', { class: 'inspector-section' },
+    el('label', { text: 'Layout' }),
+  ));
+
+  const bmGroup = el('div', { class: 'bm-inspector-group' });
+
+  // Dimensions
+  const dimSection = el('div', { class: 'bm-section' });
+  dimSection.append(el('div', { class: 'bm-section-title', text: 'Dimensions' }));
+  renderDimensionsPanel(dimSection, node, onChange);
+  bmGroup.append(dimSection);
+
+  // Padding
+  const padSection = el('div', { class: 'bm-section' });
+  padSection.append(el('div', { class: 'bm-section-title', text: 'Padding' }));
+  renderSidesPanel(padSection, node, 'p', onChange);
+  bmGroup.append(padSection);
+
+  // Margin
+  const marSection = el('div', { class: 'bm-section' });
+  marSection.append(el('div', { class: 'bm-section-title', text: 'Margin' }));
+  renderSidesPanel(marSection, node, 'm', onChange);
+  bmGroup.append(marSection);
+
+  root.append(bmGroup);
 
   // ================== HTML ATTRIBUTES ==================
   root.append(el('div', { class: 'inspector-divider' }));

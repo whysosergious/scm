@@ -165,7 +165,9 @@
   flex: 1;
   min-height: 0;
   padding: 24px;
-  overflow-y: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Status bar — fixed bottom of main-content */
@@ -261,6 +263,10 @@
 .container {
   max-width: 720px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
 }
 
 #view-root {

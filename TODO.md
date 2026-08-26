@@ -42,9 +42,23 @@ All items from the original plan have been implemented.
 
 ### P5: Non-drag add controls ✓
 
-- "+" button on canvas box nodes (visible on hover) opens a mini component picker
 - "+" button on tree nodes (visible on hover) for adding children
-- Mini picker offers Box, Text, Image, Span, Section, Nav options
+
+### Canvas UX improvements ✓
+
+- BM buttons (d/p/m) always on element right edge, uppercase monospace
+- BM panels moved from canvas overlay to inspector (under Styles)
+- Escape key exits active BM mode or deselects node
+- Click on canvas background deselects node
+- Transform control frame with 8 handles around element when BM mode active
+
+---
+
+## In progress
+
+### Canvas UX remaining
+
+- P7: Drop zones visible only during dragging, proximity-based (non-text only)
 
 ---
 

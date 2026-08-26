@@ -15,6 +15,8 @@ import { toast, toastError } from './toast.js';
 
 /** @type {function|null} Previous beforeunload handler to remove on re-render. */
 let _prevBeforeUnload = null;
+/** @type {function|null} Previous escape keydown handler to remove on re-render. */
+let _prevEscapeHandler = null;
 
 /**
  * Top-level entry point for the page editor. Shows the appropriate view
@@ -223,6 +225,24 @@ function renderEditor(root, project) {
   setProjectId(project.id);
   setupCanvasDragDrop(canvasEl, () => doc, selectNode, onAddNode);
 
+  // Escape key: deselect node
+  if (_prevEscapeHandler) document.removeEventListener('keydown', _prevEscapeHandler);
+  function handleEscape(e) {
+    if (e.key === 'Escape' && selectedNodeId) {
+      selectNode(null);
+    }
+  }
+  document.addEventListener('keydown', handleEscape);
+  _prevEscapeHandler = handleEscape;
+
+  // Click on canvas viewport background deselects
+  canvasEl.addEventListener('click', (e) => {
+    if (e.target === canvasEl || e.target.classList.contains('canvas-viewport-scroll') ||
+        e.target.classList.contains('canvas-viewport') || e.target.classList.contains('canvas-page-layer')) {
+      selectNode(null);
+    }
+  });
+
   // ================== ZOOM + VIEWPORT RESIZE ==================
 
   const ZOOM_LEVELS = [25, 50, 75, 100, 125, 150, 200, 300];
@@ -284,9 +304,11 @@ function renderEditor(root, project) {
 
       handle.addEventListener('pointerdown', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         startX = e.clientX;
         startW = viewport.offsetWidth;
         handle.classList.add('dragging');
+        handle.setPointerCapture(e.pointerId);
         document.body.style.cursor = 'ew-resize';
         document.body.style.userSelect = 'none';
 
@@ -298,6 +320,7 @@ function renderEditor(root, project) {
         }
 
         function onUp() {
+          handle.releasePointerCapture(e.pointerId);
           handle.classList.remove('dragging');
           document.body.style.cursor = '';
           document.body.style.userSelect = '';
