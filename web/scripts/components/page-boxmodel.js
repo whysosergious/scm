@@ -1,11 +1,87 @@
 // Transform control frame for selected canvas element.
 // Always visible when an element is selected — handles width/height via drag.
 // Inspector renders dimension/padding/margin scrubbers.
+// Units are preserved during drag — the numeric part is updated, unit stays.
 
 import { el } from '../dom.js';
 
 /** @type {number} Pixels of value change per pixel of pointer drag. */
 const STEP = 1;
+
+// ================== VALUE PARSING ==================
+
+/**
+ * Parses a CSS value into {num, unit}.
+ * @param {string} val - e.g. '10px', '50%', '1.5em', '0'
+ * @returns {{num: number, unit: string}}
+ */
+export function parseValue(val) {
+  const s = String(val).trim();
+  const match = s.match(/^(-?[\d.]+)\s*(%|px|em|rem|vw|vh|pt|cm|mm|in)?$/);
+  if (!match) return { num: 0, unit: 'px' };
+  return { num: parseFloat(match[1]), unit: match[2] || 'px' };
+}
+
+/**
+ * Parses a CSS pixel value string into a number.
+ * @param {string|number} val
+ * @returns {number}
+ */
+export function parsePx(val) {
+  if (typeof val === 'number') return val;
+  const s = String(val).trim();
+  const n = parseInt(s, 10);
+  return isNaN(n) ? 0 : n;
+}
+
+/**
+ * Applies a pixel delta to a CSS value, preserving the original unit.
+ * The delta is treated as a change in the numeric part of the value.
+ * @param {string} origVal - Original CSS value (e.g. '50%')
+ * @param {number} delta - Change in pixels (applied as numeric delta)
+ * @returns {string} Updated CSS value with same unit
+ */
+function applyDelta(origVal, delta) {
+  const { num, unit } = parseValue(origVal);
+  const next = Math.max(0, num + delta);
+  return `${next}${unit}`;
+}
+
+/**
+ * Applies a pixel delta to a CSS value for side properties (padding-top, margin-left, etc.).
+ * For % units, converts the pixel delta to percentage of the parent dimension.
+ * For em/rem, converts the pixel delta to em/rem.
+ * For px or no unit, applies directly.
+ * @param {HTMLElement} contextEl - Element for context (parent size, font size)
+ * @param {string} origVal - Original CSS value
+ * @param {number} delta - Change in pixels
+ * @returns {string} Updated CSS value
+ */
+function applySideDelta(contextEl, origVal, delta) {
+  const { num, unit } = parseValue(origVal);
+  let convertedDelta = delta;
+
+  if (unit === '%') {
+    const parent = contextEl.parentElement;
+    if (parent) {
+      const parentW = parseFloat(getComputedStyle(parent).width) || 1;
+      convertedDelta = (delta / parentW) * 100;
+    }
+  } else if (unit === 'em' || unit === 'rem') {
+    const ref = unit === 'rem' ? document.documentElement : contextEl;
+    const fontSize = parseFloat(getComputedStyle(ref).fontSize) || 16;
+    convertedDelta = delta / fontSize;
+  }
+
+  const next = Math.max(0, num + convertedDelta);
+  // Keep a reasonable number of decimal places
+  const formatted = unit === 'px' || unit === ''
+    ? Math.round(next)
+    : parseFloat(next.toFixed(2));
+  return `${formatted}${unit}`;
+}
+
+// ================== TRANSFORM FRAME ==================
 
 /**
  * Renders the transform control frame around the selected element.
@@ -37,13 +113,11 @@ export function renderBoxModel(canvasEl, node, onChange) {
   const tWidth = targetEl.offsetWidth;
   const tHeight = targetEl.offsetHeight;
 
-  // Transform control frame — always shown
   renderTransformFrame(pl, targetEl, top, left, tWidth, tHeight, node, onChange);
 }
 
 /**
  * Renders a transform control frame with 8 draggable resize handles.
- * Handles always resize width/height.
  */
 function renderTransformFrame(pl, targetEl, top, left, w, h, node, onChange) {
   const frame = el('div', { class: 'bm-frame' });
@@ -83,6 +157,10 @@ function renderTransformFrame(pl, targetEl, top, left, w, h, node, onChange) {
       const invertX = hd.name.includes('w') ? -1 : 1;
       const invertY = hd.name.includes('n') ? -1 : 1;
 
+      // Remember original values for width/height
+      const origW = node.styles?.width || '';
+      const origH = node.styles?.height || '';
+
       handle.setPointerCapture(e.pointerId);
       document.body.style.cursor = hd.cursor;
       document.body.style.userSelect = 'none';
@@ -94,12 +172,10 @@ function renderTransformFrame(pl, targetEl, top, left, w, h, node, onChange) {
         if (!node.styles) node.styles = {};
 
         if (affectsWidth) {
-          const next = Math.max(0, startW + dx * invertX);
-          node.styles.width = `${next}px`;
+          node.styles.width = applyDelta(origW, dx * invertX);
         }
         if (affectsHeight) {
-          const next = Math.max(0, startH + dy * invertY);
-          node.styles.height = `${next}px`;
+          node.styles.height = applyDelta(origH, dy * invertY);
         }
 
         if (onChange) onChange();
@@ -129,6 +205,17 @@ function renderTransformFrame(pl, targetEl, top, left, w, h, node, onChange) {
  */
 export function clearBoxModel(canvasEl) {
   canvasEl.querySelectorAll('.bm-frame').forEach((n) => n.remove());
+}
+
+/**
+ * Hides/shows the transform frame (used during canvas drag).
+ * @param {HTMLElement} canvasEl
+ * @param {boolean} visible
+ */
+export function setFrameVisible(canvasEl, visible) {
+  canvasEl.querySelectorAll('.bm-frame').forEach((n) => {
+    n.style.display = visible ? '' : 'none';
+  });
 }
 
 // ================== DRAG TO SCRUB ==================
@@ -170,20 +257,6 @@ export function makeDragScrub(element, onChange, vertical = false) {
   });
 }
 
-// ================== HELPERS ==================
-
-/**
- * Parses a CSS pixel value string into a number.
- * @param {string|number} val
- * @returns {number}
- */
-export function parsePx(val) {
-  if (typeof val === 'number') return val;
-  const s = String(val).trim();
-  const n = parseInt(s, 10);
-  return isNaN(n) ? 0 : n;
-}
-
 // ================== INSPECTOR PANEL RENDERING ==================
 
 /**
@@ -195,29 +268,33 @@ export function parsePx(val) {
 export function renderDimensionsPanel(container, node, onChange) {
   const grid = el('div', { class: 'bm-dim-grid' });
 
+  // Width
   const wGroup = el('div', { class: 'bm-dim-group' });
   const wLabel = el('span', { class: 'bm-dim-label', text: 'W' });
   const wValue = el('span', { class: 'bm-dim-value', text: node.styles?.width || '—' });
   wGroup.append(wLabel, wValue);
+
+  const origW = node.styles?.width || '';
+
   makeDragScrub(wGroup, (delta) => {
-    const current = parsePx(node.styles?.width || '0');
-    const next = Math.max(0, current + delta);
     if (!node.styles) node.styles = {};
-    node.styles.width = `${next}px`;
-    wValue.textContent = `${next}px`;
+    node.styles.width = applyDelta(origW, delta);
+    wValue.textContent = node.styles.width;
     onChange();
   });
 
+  // Height
   const hGroup = el('div', { class: 'bm-dim-group' });
   const hLabel = el('span', { class: 'bm-dim-label', text: 'H' });
   const hValue = el('span', { class: 'bm-dim-value', text: node.styles?.height || '—' });
   hGroup.append(hLabel, hValue);
+
+  const origH = node.styles?.height || '';
+
   makeDragScrub(hGroup, (delta) => {
-    const current = parsePx(node.styles?.height || '0');
-    const next = Math.max(0, current + delta);
     if (!node.styles) node.styles = {};
-    node.styles.height = `${next}px`;
-    hValue.textContent = `${next}px`;
+    node.styles.height = applyDelta(origH, delta);
+    hValue.textContent = node.styles.height;
     onChange();
   });
 
@@ -239,6 +316,12 @@ export function renderSidesPanel(container, node, mode, onChange) {
   const sides = ['top', 'right', 'bottom', 'left'];
   const styleKey = (side) => `${prop}-${side}`;
 
+  // Remember original values for each side
+  const origVals = {};
+  for (const side of sides) {
+    origVals[side] = node.styles?.[styleKey(side)] || '0';
+  }
+
   const zones = {};
   for (const side of sides) {
     const key = styleKey(side);
@@ -252,11 +335,9 @@ export function renderSidesPanel(container, node, mode, onChange) {
     const invert = side === 'bottom' || side === 'right' ? -1 : 1;
 
     makeDragScrub(zone, (delta) => {
-      const current = parsePx(node.styles?.[key] || '0');
-      const next = Math.max(0, current + delta * invert);
       if (!node.styles) node.styles = {};
-      node.styles[key] = `${next}px`;
-      zones[side].valueEl.textContent = `${next}`;
+      node.styles[key] = applySideDelta(container, origVals[side], delta * invert);
+      zones[side].valueEl.textContent = node.styles[key];
       onChange();
     }, isVertical);
     box.append(zone);

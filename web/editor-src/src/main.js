@@ -515,6 +515,17 @@ class RichTextEditor extends HTMLElement {
     toolbar.append(count);
     this._count = count;
 
+    // Format toggle button
+    const fmtBtn = document.createElement('button');
+    fmtBtn.type = 'button';
+    fmtBtn.className = 'rte-btn rte-fmt-toggle';
+    fmtBtn.title = 'Switch format (HTML / Markdown)';
+    fmtBtn.textContent = this._format === 'html' ? 'HTML' : 'MD';
+    fmtBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    fmtBtn.addEventListener('click', () => this._toggleFormat());
+    toolbar.append(fmtBtn);
+    this._fmtBtn = fmtBtn;
+
     const view = document.createElement('div');
     view.className = 'rte-view';
     this.append(toolbar, view);
@@ -598,6 +609,66 @@ class RichTextEditor extends HTMLElement {
 
   _emit() {
     this.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /** Toggle between HTML and Markdown format, converting the content. */
+  _toggleFormat() {
+    if (!this._view) return;
+    const oldFormat = this._format;
+    const newFormat = oldFormat === 'html' ? 'markdown' : 'html';
+
+    // Serialize current doc in old format, parse in new format
+    const raw = serializeContent(this._view.state.doc, oldFormat);
+    const newDoc = parseContent(raw, newFormat);
+
+    this._format = newFormat;
+    this._fmtBtn.textContent = newFormat === 'html' ? 'HTML' : 'MD';
+
+    // Rebuild toolbar with new format (shows/hides html-only buttons)
+    const toolbar = this.querySelector('.rte-toolbar');
+    if (toolbar) {
+      const newItems = buildToolbarItems(newFormat, this._uploadUrl);
+      // Remove old buttons (keep count + fmtBtn)
+      toolbar.textContent = '';
+      this._buttons = [];
+      for (const item of newItems) {
+        if (item.sep) {
+          toolbar.append(Object.assign(document.createElement('span'), { className: 'rte-sep' }));
+          continue;
+        }
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'rte-btn';
+        btn.title = item.title;
+        if (item.icon) {
+          btn.append(Object.assign(document.createElement('span'), {
+            className: 'material-symbols-outlined',
+            textContent: item.icon,
+          }));
+        } else {
+          btn.textContent = item.text;
+        }
+        btn.addEventListener('mousedown', (e) => e.preventDefault());
+        btn.addEventListener('click', () => {
+          item.run(this._view);
+          this._syncToolbar();
+        });
+        this._buttons.push({ item, btn });
+        toolbar.append(btn);
+      }
+      toolbar.append(this._count);
+      toolbar.append(this._fmtBtn);
+    }
+
+    // Replace document state
+    const state = EditorState.create({
+      doc: newDoc,
+      plugins: this._view.state.plugins,
+    });
+    this._view.updateState(state);
+    this._updateCount();
+    this._syncToolbar();
+    this._emit();
   }
 
   /** Insert text at the cursor (inherits active marks). */

@@ -36,7 +36,7 @@ const TEXTAREA_LENGTH_THRESHOLD = 100;
  * @returns {'html'|'markdown'} The detected format.
  */
 function richFormatFor(value) {
-  return HTMLISH_RE.test(value ?? '') ? 'html' : 'markdown';
+  return 'html';
 }
 
 /**

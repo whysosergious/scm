@@ -3,6 +3,58 @@
 
 import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
+
+const SECTION_KEY_PREFIX = 'scm-insp-collapse-';
+
+/**
+ * Returns whether a section is collapsed.
+ * @param {string} sectionId
+ * @returns {boolean}
+ */
+function isSectionCollapsed(sectionId) {
+  return localStorage.getItem(SECTION_KEY_PREFIX + sectionId) === '1';
+}
+
+/**
+ * Sets the collapsed state of a section.
+ * @param {string} sectionId
+ * @param {boolean} collapsed
+ */
+function setSectionCollapsed(sectionId, collapsed) {
+  localStorage.setItem(SECTION_KEY_PREFIX + sectionId, collapsed ? '1' : '0');
+}
+
+/**
+ * Creates a collapsible section with a clickable header.
+ * @param {string} sectionId - Unique ID for localStorage persistence.
+ * @param {string} label - Section title text.
+ * @param {HTMLElement[]} contentElements - Elements to show/hide.
+ * @returns {{header: HTMLElement, contentWrap: HTMLElement}}
+ */
+function makeCollapsibleSection(sectionId, label, ...contentElements) {
+  const collapsed = isSectionCollapsed(sectionId);
+
+  const header = el('div', { class: 'inspector-section inspector-section-header' },
+    el('span', { class: 'section-chevron', text: '›' }),
+    el('label', { text: label }),
+  );
+  header.style.cursor = 'pointer';
+
+  const contentWrap = el('div', { class: 'section-content' });
+  if (collapsed) contentWrap.style.display = 'none';
+  header.querySelector('.section-chevron').style.transform = collapsed ? 'rotate(0deg)' : 'rotate(90deg)';
+
+  header.addEventListener('click', () => {
+    const nowCollapsed = contentWrap.style.display === 'none' ? false : true;
+    contentWrap.style.display = nowCollapsed ? 'none' : '';
+    header.querySelector('.section-chevron').style.transform = nowCollapsed ? 'rotate(0deg)' : 'rotate(90deg)';
+    setSectionCollapsed(sectionId, nowCollapsed);
+  });
+
+  contentWrap.append(...contentElements);
+
+  return { header, contentWrap };
+}
 import { selectedProject } from '../state.js';
 import { renderDimensionsPanel, renderSidesPanel } from './page-boxmodel.js';
 
@@ -344,12 +396,7 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
     for (const row of attrFieldRows) root.append(row);
   }
 
-  // CSS Styles
-  root.append(el('div', { class: 'inspector-divider' }));
-  root.append(el('div', { class: 'inspector-section' },
-    el('label', { text: 'Styles' }),
-  ));
-
+  // ================== STYLES (collapsible) ==================
   if (!node.styles) node.styles = {};
 
   const stylesContainer = el('div', { class: 'inspector-styles' });
@@ -422,13 +469,13 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
   }
 
   renderStyles();
-  root.append(stylesContainer);
 
-  // ================== BOX MODEL (dimensions + padding + margin) ==================
+  const stylesSection = makeCollapsibleSection('styles', 'Styles', stylesContainer);
   root.append(el('div', { class: 'inspector-divider' }));
-  root.append(el('div', { class: 'inspector-section' },
-    el('label', { text: 'Layout' }),
-  ));
+  root.append(stylesSection.header);
+  root.append(stylesSection.contentWrap);
+
+  // ================== LAYOUT (collapsible) ==================
 
   const bmGroup = el('div', { class: 'bm-inspector-group' });
 
@@ -450,13 +497,12 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
   renderSidesPanel(marSection, node, 'm', onChange);
   bmGroup.append(marSection);
 
-  root.append(bmGroup);
-
-  // ================== HTML ATTRIBUTES ==================
+  const layoutSection = makeCollapsibleSection('layout', 'Layout', bmGroup);
   root.append(el('div', { class: 'inspector-divider' }));
-  root.append(el('div', { class: 'inspector-section' },
-    el('label', { text: 'Attributes' }),
-  ));
+  root.append(layoutSection.header);
+  root.append(layoutSection.contentWrap);
+
+  // ================== ATTRIBUTES (collapsible) ==================
 
   const attrsContainer = el('div', { class: 'inspector-styles' });
 
@@ -511,7 +557,11 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
   }
 
   renderAttrs();
-  root.append(attrsContainer);
+
+  const attrsSection = makeCollapsibleSection('attributes', 'Attributes', attrsContainer);
+  root.append(el('div', { class: 'inspector-divider' }));
+  root.append(attrsSection.header);
+  root.append(attrsSection.contentWrap);
 
   // Reusable classes (assignment)
   root.append(el('div', { class: 'inspector-divider' }));

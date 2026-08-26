@@ -7,7 +7,7 @@ import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
 import { patch, refreshGitStatus, refreshPages, selectedProject, setPageDirty, state } from '../state.js';
 import { renderPalette } from './page-palette.js';
-import { renderCanvas, setupCanvasDragDrop, setProjectId } from './page-canvas.js';
+import { renderCanvas, setupCanvasDragDrop, setProjectId, isDragging } from './page-canvas.js';
 import { renderInspector, renderHeadInspector } from './page-inspector.js';
 import { renderTree } from './page-tree.js';
 import { renderBoxModel, clearBoxModel } from './page-boxmodel.js';
@@ -168,14 +168,19 @@ function renderEditor(root, project) {
     ),
   );
 
-  // Two-column layout: canvas | tabbed right panel
+  // Two-column layout: canvas | resize handle | tabbed right panel
   const canvasEl = el('div', { class: 'page-canvas' });
 
   // Right panel with tabs
-  let activeTab = 'inspector'; // 'components' | 'tree' | 'inspector'
+  let activeTab = localStorage.getItem('scm-active-tab') || 'inspector'; // 'components' | 'tree' | 'inspector'
   const rightPanel = el('div', { class: 'page-right-panel' });
   const tabBar = el('div', { class: 'panel-tab-bar' });
   const tabContent = el('div', { class: 'panel-tab-content' });
+
+  // Panel width from localStorage
+  const savedPanelWidth = parseInt(localStorage.getItem('scm-panel-width'), 10);
+  const panelWidth = (savedPanelWidth >= 200 && savedPanelWidth <= 800) ? savedPanelWidth : 300;
+  rightPanel.style.width = `${panelWidth}px`;
 
   const tabs = [
     { id: 'components', label: 'Components', icon: 'widgets' },
@@ -196,7 +201,39 @@ function renderEditor(root, project) {
 
   rightPanel.append(tabBar, tabContent);
 
-  const columns = el('div', { class: 'page-columns' }, canvasEl, rightPanel);
+  // Panel resize handle
+  const panelResizeHandle = el('div', { class: 'panel-resize-handle' });
+  panelResizeHandle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = rightPanel.offsetWidth;
+    panelResizeHandle.classList.add('dragging');
+    panelResizeHandle.setPointerCapture(e.pointerId);
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+
+    function onMove(ev) {
+      const dx = startX - ev.clientX;
+      const newW = Math.max(200, Math.min(startW + dx, 800));
+      rightPanel.style.width = `${newW}px`;
+    }
+
+    function onUp() {
+      panelResizeHandle.releasePointerCapture(e.pointerId);
+      panelResizeHandle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      localStorage.setItem('scm-panel-width', rightPanel.offsetWidth);
+    }
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+
+  const columns = el('div', { class: 'page-columns' }, canvasEl, panelResizeHandle, rightPanel);
 
   wrap.append(toolbar, columns);
   root.append(wrap);
@@ -209,6 +246,7 @@ function renderEditor(root, project) {
 
   function switchTab(id) {
     activeTab = id;
+    localStorage.setItem('scm-active-tab', id);
     for (const [tid, btn] of Object.entries(tabButtons)) {
       btn.classList.toggle('active', tid === id);
     }
@@ -346,6 +384,7 @@ function renderEditor(root, project) {
   }
 
   function renderBoxModelNow() {
+    if (isDragging()) return; // don't re-render frame during active drag
     clearBoxModel(canvasEl);
     if (selectedNodeId) {
       const node = pm.findNode(doc.root, selectedNodeId);

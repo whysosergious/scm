@@ -7,9 +7,19 @@
 
 import * as pm from '../page-model.js';
 import { el } from '../dom.js';
+import { setFrameVisible } from './page-boxmodel.js';
 
 /** @type {string} Current project ID used for resolving image sources. */
 let _projectId = '';
+
+/** @type {boolean} True while a canvas node drag is in progress. */
+let _isDragging = false;
+
+/**
+ * Returns whether a canvas node drag is in progress.
+ * @returns {boolean}
+ */
+export function isDragging() { return _isDragging; }
 
 /**
  * Sets the project ID used for resolving relative image paths.
@@ -131,10 +141,18 @@ export function setupCanvasDragDrop(root, getDoc, onSelect, onAddNode) {
     showElementPicker(root, e, getDoc, onSelect);
   });
 
+  // Hide transform frame during drag (root listener survives page-layer re-renders)
+  root.addEventListener('dragstart', () => setFrameVisible(root, false));
+  root.addEventListener('dragend', () => {
+    setFrameVisible(root, true);
+    _isDragging = false;
+  });
+
   // Drag/drop
   root.addEventListener('dragover', (e) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+    const hasNode = e.dataTransfer.types.includes('application/x-scm-node');
+    e.dataTransfer.dropEffect = hasNode ? 'move' : 'copy';
     highlightDropTarget(root, e);
   });
 
@@ -381,10 +399,12 @@ function addInteraction(tag, nodeId, onSelect) {
     e.stopPropagation();
     e.dataTransfer.setData('application/x-scm-node', nodeId);
     e.dataTransfer.effectAllowed = 'move';
+    _isDragging = true;
     requestAnimationFrame(() => tag.classList.add('dragging'));
   });
   tag.addEventListener('dragend', () => {
     tag.classList.remove('dragging');
+    _isDragging = false;
   });
 }
 
