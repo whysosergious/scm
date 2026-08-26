@@ -220,6 +220,34 @@ select:focus {
   opacity: 0.9;
 }
 
+/* Toggle button (e.g. "Show empty elements") */
+.btn-toggle {
+  background-color: transparent;
+  color: var(--color-on-surface-variant);
+  border: 1px solid var(--color-outline-variant);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  font-family: var(--font-label);
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  opacity: 0.7;
+}
+.btn-toggle:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  opacity: 1;
+}
+.btn-toggle.active {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: var(--color-primary-container);
+  opacity: 1;
+}
+
 /* ================== App additions (Phase 7/8) ================== */
 
 /* JSON editor */
@@ -1671,23 +1699,31 @@ input[type="text"].title-input.invalid {
 .canvas-page-node.dragging {
   opacity: 0.3;
   outline-color: transparent;
+  pointer-events: none; /* let elementsFromPoint see what's underneath the source */
 }
 
-/* Empty box: drop target hint */
+/* Empty box: editor aid. Does NOT change layout — the marker is an
+   absolutely-positioned badge so the canvas matches generated HTML.
+   Only rendered when "show empty elements" is enabled. */
 .canvas-page-node.canvas-empty-box {
-  min-height: 48px;
-  border: 2px dashed var(--color-outline-variant);
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  min-height: 22px;
 }
 
 .canvas-page-node.canvas-empty-box::before {
-  content: 'Drop here';
-  font-size: 11px;
+  content: 'empty';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--color-outline-variant);
   color: var(--color-on-surface-variant);
   pointer-events: none;
+  white-space: nowrap;
+  z-index: 4;
 }
 
 /* Tree "+" button */
@@ -1718,7 +1754,18 @@ input[type="text"].title-input.invalid {
   color: var(--color-primary);
 }
 
-/* Drop target indicators */
+/* Drop target indicators — outline/box-shadow only, never layout-shifting.
+   While a drag is active, valid container targets get a faint hint so the
+   user can see where drops may land; the concrete insertion point is shown
+   on the element nearest the cursor. */
+
+/* While dragging, gently surface every container that can accept a drop.
+   Defined BEFORE the active indicators so the latter win on equal specificity. */
+.canvas-page-layer.drag-active .canvas-page-node[data-node-type='box'] {
+  outline: 1px dashed rgba(66, 133, 244, 0.35);
+  outline-offset: 2px;
+}
+
 .canvas-page-node.drop-target {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
@@ -1726,17 +1773,28 @@ input[type="text"].title-input.invalid {
 
 .canvas-page-node.drop-before {
   outline-color: var(--color-primary);
-  box-shadow: 0 -2px 0 0 var(--color-primary);
+  box-shadow: 0 -3px 0 0 var(--color-primary);
 }
 
 .canvas-page-node.drop-after {
   outline-color: var(--color-primary);
-  box-shadow: 0 2px 0 0 var(--color-primary);
+  box-shadow: 0 3px 0 0 var(--color-primary);
 }
 
 .canvas-page-node.drop-inside {
-  outline-color: var(--color-primary);
-  outline-style: dashed;
+  outline: 2px dashed var(--color-primary);
+  outline-offset: 2px;
+  background: rgba(66, 133, 244, 0.12);
+}
+
+/* Active insertion target (scoped under .drag-active) — always wins over the
+   faint container hint above. */
+.canvas-page-layer.drag-active .canvas-page-node.drop-target,
+.canvas-page-layer.drag-active .canvas-page-node.drop-before,
+.canvas-page-layer.drag-active .canvas-page-node.drop-after,
+.canvas-page-layer.drag-active .canvas-page-node.drop-inside {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 /* Picker highlight (hover preview in element picker) */

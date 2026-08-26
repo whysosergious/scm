@@ -7,7 +7,7 @@ import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
 import { patch, refreshGitStatus, refreshPages, selectedProject, setPageDirty, state } from '../state.js';
 import { renderPalette } from './page-palette.js';
-import { renderCanvas, setupCanvasDragDrop, setProjectId, isDragging } from './page-canvas.js';
+import { renderCanvas, setupCanvasDragDrop, setProjectId, isDragging, setShowEmpty } from './page-canvas.js';
 import { renderInspector, renderHeadInspector } from './page-inspector.js';
 import { renderTree } from './page-tree.js';
 import { renderBoxModel, clearBoxModel } from './page-boxmodel.js';
@@ -155,12 +155,30 @@ function renderEditor(root, project) {
   });
   const dirtyIndicator = el('span', { class: 'muted-note', text: '', style: { display: 'none' } });
 
+  // Toggle: show empty element markers on the canvas
+  let showEmpty = true;
+  const emptyToggle = el('button', { class: 'btn-toggle active', title: 'Show empty elements' },
+    icon('visibility', 16), el('span', { text: ' Empty' }));
+  emptyToggle.addEventListener('click', () => {
+    showEmpty = !showEmpty;
+    emptyToggle.classList.toggle('active', showEmpty);
+    setShowEmpty(showEmpty);
+    renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+    if (selectedNodeId) {
+      requestAnimationFrame(() => {
+        const node = pm.findNode(doc.root, selectedNodeId);
+        if (node) renderBoxModel(canvasEl, node, onNodeChange);
+      });
+    }
+  });
+
   const toolbar = el('div', { class: 'page-toolbar' },
     el('div', { class: 'page-toolbar-left' },
       el('span', { class: 'mono-title', text: name }),
       dirtyIndicator,
     ),
     el('div', { class: 'page-toolbar-right' },
+      emptyToggle,
       importHtmlBtn,
       generateBtn,
       previewBtn,

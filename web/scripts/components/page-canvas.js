@@ -21,6 +21,17 @@ let _isDragging = false;
  */
 export function isDragging() { return _isDragging; }
 
+/** @type {boolean} When true, empty boxes render an "empty" marker (editor aid). */
+let _showEmpty = true;
+
+/**
+ * Toggles the "show empty elements" editor aid. When disabled, empty boxes
+ * render exactly like the generated HTML (no marker, natural size).
+ * @param {boolean} v - Whether to show empty element markers.
+ * @returns {void}
+ */
+export function setShowEmpty(v) { _showEmpty = v; }
+
 /**
  * Sets the project ID used for resolving relative image paths.
  * @param {string} id - The project ID.
@@ -147,6 +158,7 @@ export function setupCanvasDragDrop(root, getDoc, onSelect, onDrop, onAddNode) {
   root.addEventListener('dragend', () => {
     setFrameVisible(root, true);
     _isDragging = false;
+    root.querySelector('.canvas-page-layer')?.classList.remove('drag-active');
   });
 
   // Drag/drop
@@ -270,7 +282,7 @@ function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
     for (const child of node.children) {
       renderNode(tag, child, selectedId, onSelect, onDrop, onAddNode);
     }
-  } else {
+  } else if (_showEmpty) {
     tag.classList.add('canvas-empty-box');
   }
 
@@ -401,11 +413,15 @@ function addInteraction(tag, nodeId, onSelect) {
     e.dataTransfer.setData('application/x-scm-node', nodeId);
     e.dataTransfer.effectAllowed = 'move';
     _isDragging = true;
+    const layer = tag.closest('.canvas-page-layer');
+    if (layer) layer.classList.add('drag-active');
     requestAnimationFrame(() => tag.classList.add('dragging'));
   });
   tag.addEventListener('dragend', () => {
     tag.classList.remove('dragging');
     _isDragging = false;
+    const layer = tag.closest('.canvas-page-layer');
+    if (layer) layer.classList.remove('drag-active');
   });
 }
 
@@ -558,7 +574,7 @@ function findDropTarget(canvasRoot, dragEvent) {
   const elements = document.elementsFromPoint(dragEvent.clientX, dragEvent.clientY);
 
   for (const el of elements) {
-    if (el === dragging) continue;
+    if (dragging && (el === dragging || dragging.contains(el))) continue;
     if (!el.dataset || !el.dataset.nodeId) continue;
     if (!pageLayer.contains(el)) continue;
 

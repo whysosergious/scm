@@ -231,15 +231,18 @@ export function makeDragScrub(element, onChange, vertical = false) {
   element.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const axis = vertical ? e.clientY : e.clientX;
-    let last = axis;
+    const startAxis = vertical ? e.clientY : e.clientX;
+    let last = null;
 
     function onMove(ev) {
       const current = vertical ? ev.clientY : ev.clientX;
-      const delta = Math.round((current - last) * STEP);
-      if (delta !== 0) {
+      // Delta is measured from the drag START, not the last move, so the
+      // value accumulates correctly against the original base captured by
+      // the caller (applyDelta(origVal, delta)).
+      const delta = Math.round((current - startAxis) * STEP);
+      if (delta !== last) {
+        last = delta;
         onChange(delta);
-        last = current;
       }
     }
 
