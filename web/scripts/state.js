@@ -199,7 +199,8 @@ export function confirmIfDirty() {
  * @returns {void}
  */
 export function setPageSelection(name) {
-  if (name === state.selectedPage) return;
+  // Already open on this page in the page editor: no-op.
+  if (name === state.selectedPage && state.view === 'page-editor') return;
   if (!confirmIfDirty()) return;
   patch({ selectedPage: name, view: 'page-editor', selectedFile: null, pageDirty: false });
 }

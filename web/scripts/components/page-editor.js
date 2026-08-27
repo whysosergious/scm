@@ -7,7 +7,7 @@ import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
 import { patch, refreshGitStatus, refreshPages, selectedProject, setPageDirty, state } from '../state.js';
 import { renderPalette } from './page-palette.js';
-import { renderCanvas, setupCanvasDragDrop, setProjectId, isDragging, setShowEmpty } from './page-canvas.js';
+import { renderCanvas, setupCanvasDragDrop, setProjectId, isDragging, setShowEmpty, updateSizeLabel } from './page-canvas.js';
 import { renderInspector, renderHeadInspector } from './page-inspector.js';
 import { renderTree } from './page-tree.js';
 import { renderBoxModel, clearBoxModel } from './page-boxmodel.js';
@@ -201,7 +201,7 @@ function renderEditor(root, project) {
   rightPanel.style.width = `${panelWidth}px`;
 
   const tabs = [
-    { id: 'components', label: 'Components', icon: 'widgets' },
+    { id: 'components', label: 'Base Components', icon: 'widgets' },
     { id: 'tree', label: 'Tree', icon: 'account_tree' },
     { id: 'inspector', label: 'Inspector', icon: 'tune' },
   ];
@@ -211,11 +211,20 @@ function renderEditor(root, project) {
     const btn = el('button', {
       class: 'panel-tab' + (t.id === activeTab ? ' active' : ''),
       'data-tab': t.id,
-    }, icon(t.icon, 16), el('span', { text: t.label }));
+      title: t.label,
+    }, icon(t.icon, 16));
     btn.addEventListener('click', () => switchTab(t.id));
     tabButtons[t.id] = btn;
     tabBar.append(btn);
   }
+
+  // Scroll tabs on vertical mouse wheel
+  tabBar.addEventListener('wheel', (e) => {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      e.preventDefault();
+      tabBar.scrollLeft += e.deltaY;
+    }
+  }, { passive: false });
 
   rightPanel.append(tabBar, tabContent);
 
@@ -309,6 +318,54 @@ function renderEditor(root, project) {
     const zoomPct = canvasEl.querySelector('.canvas-zoom-pct');
     if (zoomWrap) zoomWrap.style.transform = `scale(${zoomLevel / 100})`;
     if (zoomPct) zoomPct.textContent = `${zoomLevel}%`;
+    positionHandles();
+  }
+
+  /**
+   * Position resize handles at the viewport visual edges.
+   *
+   * Handles are children of .canvas-viewport (NOT zoom-wrap), so they are not
+   * scaled by the zoom transform. The zoom-wrap is a block child of the viewport
+   * filling its width, so its layout edges align with the viewport edges. The
+   * CSS scale only shrinks the *visual* rendering. We compute where the visual
+   * edges actually fall and set inline styles on each handle accordingly.
+   */
+  function positionHandles() {
+    const viewport = canvasEl._viewport;
+    const resizeW = canvasEl._resizeW;
+    const resizeH = canvasEl._resizeH;
+    const widthLabel = canvasEl._widthLabel;
+    if (!viewport || !resizeW || !resizeH) return;
+
+    const z = zoomLevel / 100;
+    const vpW = viewport.offsetWidth;
+    const vpH = viewport.offsetHeight;
+    const zoomWrap = canvasEl.querySelector('.canvas-zoom-wrap');
+    const wrapH = zoomWrap ? zoomWrap.offsetHeight : vpH;
+
+    // Width handle — tracks the viewport right edge.
+    // Visual right edge of zoom-wrap = center + wrapW/2 * z. Handle sits 15px outside.
+    // Convert to a CSS `right` value: right = (vpW - visualRight) - 15
+    const wRight = (vpW - (vpW + vpW * z) / 2) - 15;
+    resizeW.style.right = `${wRight}px`;
+    // Vertically center on the zoom-wrap visual center.
+    const wTop = (vpH - wrapH * z) / 2 + (wrapH * z) / 2;
+    resizeW.style.top = `${wTop}px`;
+    resizeW.style.transform = 'translateY(-50%)';
+
+    // Width label — same horizontal as handle, offset below it.
+    if (widthLabel) {
+      widthLabel.style.right = `${wRight}px`;
+      widthLabel.style.top = `${wTop}px`;
+    }
+
+    // Height handle — tracks the viewport bottom edge.
+    // Visual bottom of zoom-wrap = topMargin + wrapH * z. topMargin = (vpH - wrapH*z)/2.
+    // Handle sits 15px below: bottom offset = vpH - visualBottom - 15.
+    resizeH.style.bottom = `${vpH - ((vpH - wrapH * z) / 2 + wrapH * z) - 15}px`;
+    // Horizontally center on the viewport.
+    resizeH.style.left = `${vpW / 2}px`;
+    resizeH.style.transform = 'translateX(-50%)';
   }
 
   function setZoom(level) {
@@ -316,25 +373,30 @@ function renderEditor(root, project) {
     applyZoom();
   }
 
-  // Wire zoom bar buttons after first renderCanvas call
-  requestAnimationFrame(() => {
-    const zoomBar = canvasEl._zoomBar;
-    const handle = canvasEl._resizeHandle;
-    const widthLabel = canvasEl._widthLabel;
-    const viewport = canvasEl._viewport;
+    // Wire zoom bar + resize handles. Idempotent: the canvas structure is built
+    // asynchronously inside loadPage (after an await), so this is invoked once
+    // the structure actually exists — not from a rAF that would fire too early.
+    let controlsWired = false;
+    function wireCanvasControls() {
+      if (controlsWired) return;
+      const resizeW = canvasEl._resizeW;
+      const resizeH = canvasEl._resizeH;
+      const widthLabel = canvasEl._widthLabel;
+      const viewport = canvasEl._viewport;
+      if (!resizeW || !resizeH || !viewport) return; // structure not built yet
+      controlsWired = true;
 
-    if (zoomBar) {
-      const buttons = zoomBar.querySelectorAll('button');
-      // buttons: [out, pct(is span), in, fit]
-      buttons[0].addEventListener('click', () => {
+      const scale = () => zoomLevel / 100;
+
+      canvasEl._zoomOut.addEventListener('click', () => {
         const idx = ZOOM_LEVELS.findIndex((z) => z >= zoomLevel);
         setZoom(idx > 0 ? ZOOM_LEVELS[idx - 1] : zoomLevel - 25);
       });
-      buttons[2].addEventListener('click', () => {
+      canvasEl._zoomIn.addEventListener('click', () => {
         const idx = ZOOM_LEVELS.findIndex((z) => z > zoomLevel);
         setZoom(idx >= 0 ? ZOOM_LEVELS[idx] : zoomLevel + 25);
       });
-      buttons[3].addEventListener('click', () => {
+      canvasEl._zoomFit.addEventListener('click', () => {
         // Fit to available width
         const scroll = canvasEl.querySelector('.canvas-viewport-scroll');
         if (scroll && viewport) {
@@ -343,54 +405,63 @@ function renderEditor(root, project) {
           setZoom(Math.round((available / pageW) * 100));
         }
       });
-    }
 
-    // Ctrl+scroll zoom on canvas
-    canvasEl.addEventListener('wheel', (e) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -10 : 10;
-      setZoom(zoomLevel + delta);
-    }, { passive: false });
-
-    // Viewport resize handle
-    if (handle && viewport) {
-      let startX = 0;
-      let startW = 0;
-
-      handle.addEventListener('pointerdown', (e) => {
+      // Ctrl+scroll zoom on canvas
+      canvasEl.addEventListener('wheel', (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
         e.preventDefault();
-        e.stopPropagation();
-        startX = e.clientX;
-        startW = viewport.offsetWidth;
-        handle.classList.add('dragging');
-        handle.setPointerCapture(e.pointerId);
-        document.body.style.cursor = 'ew-resize';
-        document.body.style.userSelect = 'none';
+        const delta = e.deltaY > 0 ? -10 : 10;
+        setZoom(zoomLevel + delta);
+      }, { passive: false });
 
-        function onMove(ev) {
-          const dx = ev.clientX - startX;
-          const newW = Math.max(200, Math.min(startW + dx, 2400));
-          viewport.style.width = `${newW}px`;
-          if (widthLabel) widthLabel.textContent = `${Math.round(newW)}px`;
-        }
+      // Viewport resize handles. Pointer movement is in screen pixels while the
+      // viewport width/height are design pixels (the zoom transform is applied
+      // to an inner wrapper), so divide by the current zoom scale.
+      function wireResize(handle, orient) {
+        handle.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const startX = e.clientX;
+          const startY = e.clientY;
+          const startW = viewport.offsetWidth;
+          const startH = viewport.offsetHeight;
+          handle.classList.add('dragging');
+          handle.setPointerCapture(e.pointerId);
+          document.body.style.cursor = orient === 'w' ? 'ew-resize' : 'ns-resize';
+          document.body.style.userSelect = 'none';
 
-        function onUp() {
-          handle.releasePointerCapture(e.pointerId);
-          handle.classList.remove('dragging');
-          document.body.style.cursor = '';
-          document.body.style.userSelect = '';
-          window.removeEventListener('pointermove', onMove);
-          window.removeEventListener('pointerup', onUp);
-        }
+          function onMove(ev) {
+            if (orient === 'w') {
+              const dx = (ev.clientX - startX) / scale();
+              const newW = Math.max(200, Math.min(startW + dx, 2400));
+              viewport.style.width = `${newW}px`;
+              if (widthLabel) widthLabel.textContent = `${Math.round(newW)}px`;
+            } else {
+              const dy = (ev.clientY - startY) / scale();
+              const newH = Math.max(80, startH + dy);
+              viewport.style.height = `${newH}px`;
+            }
+            positionHandles();
+            updateSizeLabel(canvasEl);
+          }
 
-        window.addEventListener('pointermove', onMove);
-        window.addEventListener('pointerup', onUp);
-      });
+          function onUp() {
+            handle.releasePointerCapture(e.pointerId);
+            handle.classList.remove('dragging');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+          }
+
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', onUp);
+        });
+      }
+
+      wireResize(resizeW, 'w');
+      wireResize(resizeH, 'h');
     }
-
-    applyZoom();
-  });
 
   // State
   function markDirty(v) {
@@ -618,6 +689,8 @@ function renderEditor(root, project) {
         toast(`Page has issues: ${validation.errors[0]}`, 'warn');
       }
       renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+      wireCanvasControls();
+      applyZoom();
       refreshTree();
       refreshInspector();
     } catch (err) {

@@ -73,6 +73,9 @@ function render() {
   $('nav-settings').classList.toggle('active', settingsActive);
 
   const root = $('view-root');
+  // The page editor manages its own canvas spacing; drop the shared 24px pad.
+  const canvasMain = $('view-canvas');
+  if (canvasMain) canvasMain.classList.toggle('canvas-page-view', state.view === 'page-editor');
   if (state.view === 'media') {
     renderMedia(root);
     return;

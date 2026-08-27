@@ -84,38 +84,61 @@ export function renderCanvas(root, doc, selectedNodeId, onSelect, onDrop, onAddN
     renderNode(pageLayer, doc.root, selectedNodeId, onSelect, onDrop, onAddNode);
     zoomWrap.append(pageLayer);
 
-    // Resize handle
-    const handle = el('div', { class: 'canvas-resize-handle' });
-    viewport.append(handle);
-
-    // Width label
+    // Resize handles live in the viewport (outside zoom-wrap) so they are NOT
+    // scaled by the zoom transform. JS positions them at the visual edges.
+    const resizeW = el('div', { class: 'canvas-resize-handle canvas-resize-w', title: 'Drag to resize width' });
+    const resizeH = el('div', { class: 'canvas-resize-handle canvas-resize-h', title: 'Drag to resize height' });
     const widthLabel = el('div', { class: 'canvas-width-label' });
-    viewport.append(widthLabel);
+    viewport.append(resizeW, resizeH, widthLabel);
 
-    // Zoom bar
+    // Canvas info / zoom bar
     const zoomBar = el('div', { class: 'canvas-zoom-bar' });
+    const sizeLabel = el('span', { class: 'canvas-size-label', text: '—' });
     const zoomOut = el('button', { title: 'Zoom out (Ctrl+-)', text: '−' });
     const zoomPct = el('span', { class: 'canvas-zoom-pct', text: '100%' });
     const zoomIn = el('button', { title: 'Zoom in (Ctrl++)', text: '+' });
     const zoomFit = el('button', { class: 'canvas-zoom-fit', title: 'Fit to width', text: 'Fit' });
-    zoomBar.append(zoomOut, zoomPct, zoomIn, zoomFit);
+    zoomBar.append(sizeLabel, el('span', { class: 'canvas-zoom-spacer' }), zoomOut, zoomPct, zoomIn, zoomFit);
     root.append(zoomBar);
 
     // Wire zoom controls (callbacks set by page-editor.js via setupCanvasZoom)
     root._zoomBar = zoomBar;
     root._zoomPct = zoomPct;
+    root._zoomOut = zoomOut;
+    root._zoomIn = zoomIn;
+    root._zoomFit = zoomFit;
     root._viewport = viewport;
     root._zoomWrap = zoomWrap;
-    root._resizeHandle = handle;
+    root._resizeW = resizeW;
+    root._resizeH = resizeH;
     root._widthLabel = widthLabel;
+    root._sizeLabel = sizeLabel;
   } else {
     // Re-render: just update the page layer content inside existing structure
     const zoomWrap = root.querySelector('.canvas-zoom-wrap');
     zoomWrap.textContent = '';
     const pageLayer = el('div', { class: 'canvas-page-layer' });
-    renderNode(pageLayer, doc.root, selectedNodeId, onSelect, onDrop, onAddNode);
+    renderNode(pageLayer, doc.root, selectedId, onSelect, onDrop, onAddNode);
     zoomWrap.append(pageLayer);
   }
+
+  updateSizeLabel(root);
+}
+
+/**
+ * Updates the canvas size readout (design pixels, independent of zoom).
+ * @param {HTMLElement} root - The canvas container element.
+ * @returns {void}
+ */
+export function updateSizeLabel(root) {
+  const sizeLabel = root._sizeLabel;
+  if (!sizeLabel) return;
+  const viewport = root._viewport;
+  if (!viewport) return;
+  // offsetWidth/Height are layout metrics and unaffected by the zoom transform.
+  const w = viewport.offsetWidth;
+  const h = viewport.offsetHeight;
+  sizeLabel.textContent = `${Math.round(w)} × ${Math.round(h)}`;
 }
 
 /**

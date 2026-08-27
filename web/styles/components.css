@@ -523,23 +523,28 @@ select:focus {
   display: inline-flex;
   gap: 4px;
   margin-bottom: 16px;
-  border: 1px solid var(--color-outline-variant);
-  border-radius: var(--radius);
-  padding: 3px;
+  border-bottom: 1px solid var(--color-outline-variant);
 }
 .tab-btn {
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
+  border-bottom: none;
   color: var(--color-on-surface-variant);
   font-family: var(--font-label);
   font-size: 11px;
-  padding: 4px 12px;
-  border-radius: calc(var(--radius) - 2px);
+  padding: 6px 12px;
+  margin-bottom: -1px;
+  border-radius: var(--radius) var(--radius) 0 0;
   cursor: pointer;
 }
-.tab-btn.active {
-  background-color: rgba(37, 99, 235, 0.15);
+.tab-btn:hover {
   color: var(--color-primary);
+}
+.tab-btn.active {
+  background-color: var(--color-surface);
+  color: var(--color-primary);
+  border-color: var(--color-outline-variant);
+  border-bottom-color: var(--color-surface);
 }
 
 /* Property rows: head line (handle/chevron/content/delete) + full-width
@@ -1367,18 +1372,23 @@ input[type="text"].title-input.invalid {
 
 .panel-tab-bar {
   display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
   border-bottom: 1px solid var(--color-outline-variant);
   background: var(--color-surface);
   flex-shrink: 0;
 }
 
+.panel-tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
 .panel-tab {
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 6px 4px;
+  padding: 6px 10px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -1391,6 +1401,11 @@ input[type="text"].title-input.invalid {
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
   white-space: nowrap;
+  border-right: 1px solid var(--color-outline-variant);
+}
+
+.panel-tab:last-child {
+  border-right: none;
 }
 
 .panel-tab:hover {
@@ -1401,10 +1416,6 @@ input[type="text"].title-input.invalid {
 .panel-tab.active {
   color: var(--color-primary);
   border-bottom-color: var(--color-primary);
-}
-
-.panel-tab span {
-  font-size: 11px;
 }
 
 .panel-tab-content {
@@ -1421,10 +1432,6 @@ input[type="text"].title-input.invalid {
 .page-palette {
   padding: 10px;
   overflow-y: auto;
-}
-
-.palette-header {
-  margin-bottom: 8px;
 }
 
 .palette-item {
@@ -1455,7 +1462,67 @@ input[type="text"].title-input.invalid {
 }
 
 .palette-hint {
-  margin-top: 12px;
+  margin-bottom: 8px;
+}
+
+.palette-section {
+  margin-bottom: 6px;
+}
+
+.palette-section-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.palette-section-header::-webkit-details-marker {
+  display: none;
+}
+
+.palette-section-header svg,
+.palette-section-header .material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  transition: transform 0.15s;
+}
+
+.palette-section[open] > .palette-section-header svg {
+  transform: rotate(0deg);
+}
+
+.palette-section:not([open]) > .palette-section-header svg {
+  transform: rotate(-90deg);
+}
+
+.palette-section-body {
+  padding: 6px 8px 8px;
+}
+
+.palette-group-title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 8px 0 4px;
+}
+
+.palette-group-title:first-child {
+  margin-top: 0;
+}
+
+.palette-empty {
+  padding: 12px 8px;
+  text-align: center;
 }
 
 /* ==================== CANVAS ==================== */
@@ -1497,7 +1564,7 @@ input[type="text"].title-input.invalid {
 .canvas-viewport {
   position: relative;
   min-width: 200px;
-  max-width: 100%;
+  /* max-width: 100%; */
   flex-shrink: 0;
 }
 
@@ -1505,6 +1572,13 @@ input[type="text"].title-input.invalid {
 .canvas-zoom-wrap {
   transform-origin: top center;
   transition: transform 0.1s ease;
+  height: 100%;
+  width: 100%;
+  padding-bottom: 24px;
+  overflow: auto;
+
+  /* temp */
+  border: 1px solid #111;
 }
 
 /* Page layer: the actual rendered page (white page) */
@@ -1518,29 +1592,64 @@ input[type="text"].title-input.invalid {
   overflow: hidden;
 }
 
-/* Viewport resize handle (right edge) */
+/* Viewport resize handles — centered on the edge, sitting just outside so they
+   never shift the canvas layout. */
 .canvas-resize-handle {
   position: absolute;
-  top: 0;
-  right: -4px;
-  width: 8px;
-  height: 100%;
-  cursor: ew-resize;
   z-index: 10;
   user-select: none;
   touch-action: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+/* Width handle: right edge, vertically centered, just outside */
+.canvas-resize-w {
+  right: -15px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 13px;
+  height: 46px;
+  cursor: ew-resize;
+}
+
+/* Height handle: bottom edge, horizontally centered, just outside */
+.canvas-resize-h {
+  left: 50%;
+  bottom: -15px;
+  transform: translateX(-50%);
+  width: 46px;
+  height: 13px;
+  cursor: ns-resize;
 }
 
 .canvas-resize-handle::after {
   content: '';
-  position: absolute;
-  top: 0;
-  right: 2px;
-  width: 3px;
-  height: 100%;
   background: var(--color-outline-variant);
   border-radius: 2px;
   transition: background 0.15s;
+}
+
+.canvas-resize-w::after {
+  width: 3px;
+  height: 22px;
+}
+
+.canvas-resize-h::after {
+  width: 22px;
+  height: 3px;
+}
+
+.canvas-resize-handle:hover,
+.canvas-resize-handle.dragging {
+  background: var(--color-primary-container);
+  border-color: var(--color-primary);
 }
 
 .canvas-resize-handle:hover::after,
@@ -1551,9 +1660,9 @@ input[type="text"].title-input.invalid {
 /* Width label (shows during resize) */
 .canvas-width-label {
   position: absolute;
-  bottom: -22px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: -15px;
+  top: 50%;
+  transform: translateY(calc(-50% + 20px));
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--color-on-surface-variant);
@@ -1567,22 +1676,33 @@ input[type="text"].title-input.invalid {
   transition: opacity 0.15s;
 }
 
-.canvas-resize-handle.dragging ~ .canvas-width-label,
+.canvas-resize-w.dragging ~ .canvas-width-label,
 .canvas-viewport:hover .canvas-width-label {
   opacity: 1;
 }
 
-/* Zoom bar (bottom of canvas area) */
+/* Canvas info / zoom bar (bottom of canvas area) */
 .canvas-zoom-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 6px;
   padding: 4px 12px;
   background: var(--color-surface);
   border-top: 1px solid var(--color-outline-variant);
   flex-shrink: 0;
   user-select: none;
+}
+
+.canvas-size-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+  white-space: nowrap;
+}
+
+.canvas-zoom-spacer {
+  flex: 1;
 }
 
 .canvas-zoom-bar button {
@@ -1621,11 +1741,6 @@ input[type="text"].title-input.invalid {
 }
 
 /* Palette section headings */
-.palette-section {
-  margin-top: 10px;
-  margin-bottom: 4px;
-}
-
 /* Media components on canvas: native players inside selectable wrapper */
 .canvas-media video,
 .canvas-media audio {
@@ -1857,7 +1972,7 @@ input[type="text"].title-input.invalid {
 }
 
 .inspector-section {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 /* Collapsible section header */
@@ -1865,21 +1980,46 @@ input[type="text"].title-input.invalid {
   display: flex;
   align-items: center;
   gap: 4px;
+  padding: 4px 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-on-surface-variant);
   cursor: pointer;
   user-select: none;
-  padding: 2px 0;
+  list-style: none;
+}
+
+.inspector-section-header::-webkit-details-marker {
+  display: none;
+}
+
+.inspector-section-header svg,
+.inspector-section-header .material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  transition: transform 0.15s;
+}
+
+.inspector-section[open] > .inspector-section-header svg {
+  transform: rotate(0deg);
+}
+
+.inspector-section:not([open]) > .inspector-section-header svg {
+  transform: rotate(-90deg);
+}
+
+.inspector-section-header span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .inspector-section-header:hover {
   opacity: 0.8;
-}
-
-.section-chevron {
-  display: inline-block;
-  font-size: 12px;
-  font-weight: bold;
-  transition: transform 0.15s;
-  flex-shrink: 0;
 }
 
 .section-content {

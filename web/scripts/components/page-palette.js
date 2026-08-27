@@ -54,6 +54,47 @@ const COMPONENT_GROUPS = [
 ];
 
 /**
+ * Creates a collapsible section with a header and content container.
+ */
+function createSection(root, title, defaultOpen = true) {
+  const details = el('details', { class: 'palette-section', open: defaultOpen });
+  const summary = el('summary', { class: 'palette-section-header' },
+    icon('expand_more', 16),
+    el('span', { text: title }),
+  );
+  const body = el('div', { class: 'palette-section-body' });
+  details.append(summary, body);
+  root.append(details);
+  return body;
+}
+
+/**
+ * Creates a palette item element.
+ */
+function createItem(comp, onAdd) {
+  const item = el('div', {
+    class: 'palette-item',
+    draggable: 'true',
+    title: comp.desc,
+    'data-component-type': comp.type,
+  },
+    icon(comp.icon, 22),
+    el('span', { class: 'palette-label', text: comp.label }),
+  );
+
+  item.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('application/x-scm-component', comp.type);
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+
+  item.addEventListener('click', () => {
+    onAdd(comp.type);
+  });
+
+  return item;
+}
+
+/**
  * Renders the component palette with draggable items and click-to-add support.
  * @param {HTMLElement} root - Container element to render the palette into.
  * @param {function(string): void} onAdd - Callback invoked with component type (or "type:element") when added.
@@ -62,43 +103,23 @@ const COMPONENT_GROUPS = [
 export function renderPalette(root, onAdd) {
   root.textContent = '';
 
-  root.append(el('div', { class: 'palette-header' },
-    el('span', { class: 'mono-label', text: 'COMPONENTS' }),
-  ));
-
-  for (const group of COMPONENT_GROUPS) {
-    root.append(el('div', { class: 'palette-section' },
-      el('span', { class: 'muted-note', text: group.title }),
-    ));
-
-    for (const comp of group.items) {
-      const item = el('div', {
-        class: 'palette-item',
-        draggable: 'true',
-        title: comp.desc,
-        'data-component-type': comp.type,
-      },
-        icon(comp.icon, 22),
-        el('span', { class: 'palette-label', text: comp.label }),
-      );
-
-      // Drag start: set component type data
-      item.addEventListener('dragstart', (e) => {
-        e.dataTransfer.setData('application/x-scm-component', comp.type);
-        e.dataTransfer.effectAllowed = 'copy';
-      });
-
-      // Also support click-to-add (keyboard accessible)
-      item.addEventListener('click', () => {
-        onAdd(comp.type);
-      });
-
-      root.append(item);
-    }
-  }
-
-  // Keyboard hint
+  // Hint at top
   root.append(el('div', { class: 'palette-hint' },
     el('span', { class: 'muted-note', text: 'Drag onto canvas or click to add to root' }),
   ));
+
+  // Custom Components section
+  const customBody = createSection(root, 'Custom Components', true);
+  customBody.append(el('div', { class: 'palette-empty muted-note', text: 'No custom components yet' }));
+
+  // Base Components section
+  const baseBody = createSection(root, 'Base Components', true);
+
+  for (const group of COMPONENT_GROUPS) {
+    baseBody.append(el('div', { class: 'palette-group-title muted-note', text: group.title }));
+
+    for (const comp of group.items) {
+      baseBody.append(createItem(comp, onAdd));
+    }
+  }
 }

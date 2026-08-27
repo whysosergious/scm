@@ -170,6 +170,11 @@
   flex-direction: column;
 }
 
+/* Page editor manages its own canvas spacing; drop the shared padding. */
+.canvas.canvas-page-view {
+  padding: 0;
+}
+
 /* Status bar — fixed bottom of main-content */
 .status-bar {
   flex-shrink: 0;
