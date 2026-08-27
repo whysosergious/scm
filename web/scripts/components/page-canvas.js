@@ -101,10 +101,10 @@ export function renderCanvas(
     const zoomWrap = el("div", { class: "canvas-zoom-wrap" });
     viewport.append(zoomWrap);
 
-    // Page layer (white page)
+    // Page layer (wraps the editable page; isolated from editor styles)
     const pageLayer = el("div", {
       class: "canvas-page-layer",
-      "data-role": "html_body",
+      "data-role": "page-root",
     });
     renderNode(
       pageLayer,
@@ -166,8 +166,18 @@ export function renderCanvas(
     // Re-render: just update the page layer content inside existing structure
     const zoomWrap = root.querySelector(".canvas-zoom-wrap");
     zoomWrap.textContent = "";
-    const pageLayer = el("div", { class: "canvas-page-layer" });
-    renderNode(pageLayer, doc.root, selectedId, onSelect, onDrop, onAddNode);
+    const pageLayer = el("div", {
+      class: "canvas-page-layer",
+      "data-role": "page-root",
+    });
+    renderNode(
+      pageLayer,
+      doc.root,
+      selectedNodeId,
+      onSelect,
+      onDrop,
+      onAddNode,
+    );
     zoomWrap.append(pageLayer);
   }
 
