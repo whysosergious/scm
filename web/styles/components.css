@@ -866,26 +866,9 @@ input[type="text"].title-input.invalid {
   color: var(--color-on-surface);
 }
 
-/* Transform control frame (blue dashed border + white handles) */
-.bm-frame {
-  position: absolute;
-  z-index: 17;
-  border: 2px dashed var(--color-primary);
-  pointer-events: none;
-}
-
-.bm-handle {
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  background: #fff;
-  border: 1.5px solid var(--color-primary);
-  border-radius: 2px;
-  pointer-events: auto;
-  z-index: 18;
-  user-select: none;
-  touch-action: none;
-}
+/* Transform control frame (blue dashed border + white handles) ----------
+   Moved into the page-root shadow root (page-canvas.js EDITOR_CANVAS_CSS),
+   since the frame is appended inside the isolated page layer. */
 
 /* Box model inspector group */
 .bm-inspector-group {
@@ -1739,15 +1722,6 @@ input[type="text"].title-input.invalid {
 }
 
 /* Palette section headings */
-/* Media components on canvas: native players inside selectable wrapper */
-.canvas-media video,
-.canvas-media audio {
-  display: block;
-  min-width: 240px;
-  min-height: 44px;
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: 4px;
-}
 
 /* Checkbox inputs inside inspector rows align without stretching */
 .inspector-css-row input[type='checkbox'] {
@@ -1755,57 +1729,9 @@ input[type="text"].title-input.invalid {
   flex-shrink: 0;
 }
 
-/* Page nodes: actual rendered elements */
-.canvas-page-node {
-  min-height: 1em;
-  position: relative;
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  transition: outline-color 0.1s;
-  cursor: pointer;
-}
-
-/* Hover indicator: pale/semi-transparent — always wins over selected */
-.canvas-page-node.canvas-hovered:not(.dragging) {
-  outline-color: rgba(66, 133, 244, 0.25);
-}
-
-/* Selected indicator: deep/opaque */
-.canvas-page-node.selected {
-  outline-color: var(--color-primary);
-  outline-width: 2px;
-}
-
-/* Dragging state */
-.canvas-page-node.dragging {
-  opacity: 0.3;
-  outline-color: transparent;
-  pointer-events: none; /* let elementsFromPoint see what's underneath the source */
-}
-
-/* Empty box: editor aid. Does NOT change layout — the marker is an
-   absolutely-positioned badge so the canvas matches generated HTML.
-   Only rendered when "show empty elements" is enabled. */
-.canvas-page-node.canvas-empty-box {
-  min-height: 22px;
-}
-
-.canvas-page-node.canvas-empty-box::before {
-  content: 'empty';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: var(--color-outline-variant);
-  color: var(--color-on-surface-variant);
-  pointer-events: none;
-  white-space: nowrap;
-  z-index: 4;
-}
+/* Page nodes: actual rendered elements ---------------------------------
+   The rules below were moved into the page-root shadow root (see
+   page-canvas.js EDITOR_CANVAS_CSS) so editor and page styles stay isolated. */
 
 /* Tree "+" button */
 .tree-add-child {
@@ -1835,55 +1761,10 @@ input[type="text"].title-input.invalid {
   color: var(--color-primary);
 }
 
-/* Drop target indicators — outline/box-shadow only, never layout-shifting.
-   While a drag is active, valid container targets get a faint hint so the
-   user can see where drops may land; the concrete insertion point is shown
-   on the element nearest the cursor. */
-
-/* While dragging, gently surface every container that can accept a drop.
-   Defined BEFORE the active indicators so the latter win on equal specificity. */
-.canvas-page-layer.drag-active .canvas-page-node[data-node-type='box'] {
-  outline: 1px dashed rgba(66, 133, 244, 0.35);
-  outline-offset: 2px;
-}
-
-.canvas-page-node.drop-target {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
-.canvas-page-node.drop-before {
-  outline-color: var(--color-primary);
-  box-shadow: 0 -3px 0 0 var(--color-primary);
-}
-
-.canvas-page-node.drop-after {
-  outline-color: var(--color-primary);
-  box-shadow: 0 3px 0 0 var(--color-primary);
-}
-
-.canvas-page-node.drop-inside {
-  outline: 2px dashed var(--color-primary);
-  outline-offset: 2px;
-  background: rgba(66, 133, 244, 0.12);
-}
-
-/* Active insertion target (scoped under .drag-active) — always wins over the
-   faint container hint above. */
-.canvas-page-layer.drag-active .canvas-page-node.drop-target,
-.canvas-page-layer.drag-active .canvas-page-node.drop-before,
-.canvas-page-layer.drag-active .canvas-page-node.drop-after,
-.canvas-page-layer.drag-active .canvas-page-node.drop-inside {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
-/* Picker highlight (hover preview in element picker) */
-.canvas-page-node.canvas-picker-highlight {
-  outline: 2px solid var(--color-tertiary) !important;
-  outline-offset: 2px;
-  background: var(--color-tertiary-container) !important;
-}
+/* Drop target indicators and picker highlight --------------------------
+   Moved into the page-root shadow root (page-canvas.js EDITOR_CANVAS_CSS).
+   The element picker dropdown itself (.canvas-element-picker) stays in the
+   document — it is editor chrome overlaid on the canvas, not page content. */
 
 /* Element picker dropdown (Alt+click) */
 .canvas-element-picker {

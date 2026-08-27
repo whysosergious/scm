@@ -4,6 +4,7 @@
 // Units are preserved during drag — the numeric part is updated, unit stays.
 
 import { el } from '../dom.js';
+import { canvasPageShadow } from './page-canvas.js';
 
 /** @type {number} Pixels of value change per pixel of pointer drag. */
 const STEP = 1;
@@ -94,7 +95,9 @@ export function renderBoxModel(canvasEl, node, onChange) {
   clearBoxModel(canvasEl);
   if (!node) return;
 
-  const targetEl = canvasEl.querySelector(`[data-node-id="${node.id}"]`);
+  const shadow = canvasPageShadow(canvasEl);
+  if (!shadow) return;
+  const targetEl = shadow.querySelector(`[data-node-id="${node.id}"]`);
   if (!targetEl) return;
 
   const pl = canvasEl.querySelector('.canvas-page-layer');
@@ -196,15 +199,17 @@ function renderTransformFrame(pl, targetEl, top, left, w, h, node, onChange) {
     frame.append(handle);
   }
 
-  pl.append(frame);
-}
+   pl.shadowRoot.append(frame);
+ }
 
 /**
  * Removes the transform frame from the canvas.
  * @param {HTMLElement} canvasEl
  */
 export function clearBoxModel(canvasEl) {
-  canvasEl.querySelectorAll('.bm-frame').forEach((n) => n.remove());
+  const shadow = canvasPageShadow(canvasEl);
+  if (!shadow) return;
+  shadow.querySelectorAll('.bm-frame').forEach((n) => n.remove());
 }
 
 /**
@@ -213,7 +218,9 @@ export function clearBoxModel(canvasEl) {
  * @param {boolean} visible
  */
 export function setFrameVisible(canvasEl, visible) {
-  canvasEl.querySelectorAll('.bm-frame').forEach((n) => {
+  const shadow = canvasPageShadow(canvasEl);
+  if (!shadow) return;
+  shadow.querySelectorAll('.bm-frame').forEach((n) => {
     n.style.display = visible ? '' : 'none';
   });
 }

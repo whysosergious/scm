@@ -7,7 +7,7 @@ import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
 import { patch, refreshGitStatus, refreshPages, selectedProject, setPageDirty, state } from '../state.js';
 import { renderPalette } from './page-palette.js';
-import { renderCanvas, setupCanvasDragDrop, setProjectId, isDragging, setShowEmpty, updateSizeLabel } from './page-canvas.js';
+import { renderCanvas, setupCanvasDragDrop, setProjectId, isDragging, setShowEmpty, updateSizeLabel, canvasPageShadow } from './page-canvas.js';
 import { renderInspector, renderHeadInspector } from './page-inspector.js';
 import { renderTree } from './page-tree.js';
 import { renderBoxModel, clearBoxModel } from './page-boxmodel.js';
@@ -512,9 +512,12 @@ function renderEditor(root, project) {
     refreshInspector();
     refreshTree();
     // Update canvas selection
-    canvasEl.querySelectorAll('.canvas-page-node').forEach((n) => {
-      n.classList.toggle('selected', n.dataset.nodeId === id);
-    });
+    const shadow = canvasPageShadow(canvasEl);
+    if (shadow) {
+      shadow.querySelectorAll('.canvas-page-node').forEach((n) => {
+        n.classList.toggle('selected', n.dataset.nodeId === id);
+      });
+    }
     // Box model control — defer to let canvas layout settle
     clearBoxModel(canvasEl);
     if (id) {

@@ -9,6 +9,193 @@ import * as pm from "../page-model.js";
 import { el } from "../dom.js";
 import { setFrameVisible } from "./page-boxmodel.js";
 
+/**
+ * Returns the shadow root of the page-root layer inside the canvas, if any.
+ * The page content is rendered into this shadow root so editor styles and the
+ * page's own styles are isolated from each other.
+ * @param {HTMLElement} canvasEl - The canvas container element.
+ * @returns {ShadowRoot|null}
+ */
+export function canvasPageShadow(canvasEl) {
+  const layer = canvasEl.querySelector(".canvas-page-layer");
+  return layer && layer.shadowRoot ? layer.shadowRoot : null;
+}
+
+/**
+ * Editor canvas CSS that must apply to page content (selection outlines, hover,
+ * drop indicators, box-model frame). Lives in the shadow root so it cannot leak
+ * into the editor chrome, and editor chrome styles cannot reach page content.
+ * `:host()` matches the page-root layer (the shadow host) for drag-active hints.
+ */
+const EDITOR_CANVAS_CSS = `
+.canvas-media video,
+.canvas-media audio {
+  display: block;
+  min-width: 240px;
+  min-height: 44px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+.canvas-page-node {
+  min-height: 1em;
+  position: relative;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color 0.1s;
+  cursor: pointer;
+}
+.canvas-page-node.canvas-hovered:not(.dragging) {
+  outline-color: rgba(66, 133, 244, 0.25);
+}
+.canvas-page-node.selected {
+  outline-color: var(--color-primary);
+  outline-width: 2px;
+}
+.canvas-page-node.dragging {
+  opacity: 0.3;
+  outline-color: transparent;
+  pointer-events: none;
+}
+.canvas-page-node.canvas-empty-box {
+  min-height: 22px;
+}
+.canvas-page-node.canvas-empty-box::before {
+  content: 'empty';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--color-outline-variant);
+  color: var(--color-on-surface-variant);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 4;
+}
+:host(.drag-active) .canvas-page-node[data-node-type='box'] {
+  outline: 1px dashed rgba(66, 133, 244, 0.35);
+  outline-offset: 2px;
+}
+.canvas-page-node.drop-target {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.canvas-page-node.drop-before {
+  outline-color: var(--color-primary);
+  box-shadow: 0 -3px 0 0 var(--color-primary);
+}
+.canvas-page-node.drop-after {
+  outline-color: var(--color-primary);
+  box-shadow: 0 3px 0 0 var(--color-primary);
+}
+.canvas-page-node.drop-inside {
+  outline: 2px dashed var(--color-primary);
+  outline-offset: 2px;
+  background: rgba(66, 133, 244, 0.12);
+}
+:host(.drag-active) .canvas-page-node.drop-target,
+:host(.drag-active) .canvas-page-node.drop-before,
+:host(.drag-active) .canvas-page-node.drop-after,
+:host(.drag-active) .canvas-page-node.drop-inside {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.canvas-page-node.canvas-picker-highlight {
+  outline: 2px solid var(--color-tertiary) !important;
+  outline-offset: 2px;
+  background: var(--color-tertiary-container) !important;
+}
+.bm-frame {
+  position: absolute;
+  z-index: 17;
+  border: 2px dashed var(--color-primary);
+  pointer-events: none;
+}
+.bm-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border: 1.5px solid var(--color-primary);
+  border-radius: 2px;
+  pointer-events: auto;
+  z-index: 18;
+  user-select: none;
+  touch-action: none;
+}
+`;
+
+/**
+ * Builds a CSS string from the page document's own styles (reusable classes +
+ * inline <style> head elements) so the canvas previews the page faithfully.
+ * @param {Object|null} doc - Page document.
+ * @returns {string}
+ */
+function buildPageCss(doc) {
+  if (!doc) return "";
+  let css = "";
+  if (Array.isArray(doc.classes)) {
+    for (const c of doc.classes) {
+      const name = (c && c.name) || "";
+      if (!name) continue;
+      const styles = (c && c.styles) || {};
+      const decls = Object.entries(styles)
+        .map(([k, v]) => `${k}: ${v};`)
+        .join("\n");
+      if (decls) {
+        const safe = typeof CSS !== "undefined" && CSS.escape
+          ? CSS.escape(name)
+          : name.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+        css += `.${safe} {\n${decls}\n}\n`;
+      }
+    }
+  }
+  if (Array.isArray(doc.head)) {
+    for (const he of doc.head) {
+      if (he.type === "style" && he.css) css += he.css + "\n";
+    }
+  }
+  return css;
+}
+
+/**
+ * (Re)builds the page-root shadow root: clears it, injects the editor canvas
+ * CSS and the page's own styles, and <link>s external stylesheets from <head>.
+ * @param {HTMLElement} pageLayer - The page-root host element.
+ * @param {Object|null} doc - Page document.
+ * @returns {ShadowRoot}
+ */
+function buildShadow(pageLayer, doc) {
+  let shadow = pageLayer.shadowRoot;
+  if (!shadow) shadow = pageLayer.attachShadow({ mode: "open" });
+  shadow.textContent = "";
+
+  const edStyle = document.createElement("style");
+  edStyle.textContent = EDITOR_CANVAS_CSS;
+  shadow.append(edStyle);
+
+  const pgStyle = document.createElement("style");
+  pgStyle.textContent = buildPageCss(doc);
+  shadow.append(pgStyle);
+
+  if (doc && Array.isArray(doc.head)) {
+    for (const he of doc.head) {
+      if (he.type === "stylesheet" && he.href) {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = he.href;
+        if (he.media) link.media = he.media;
+        shadow.append(link);
+      }
+    }
+  }
+
+  return shadow;
+}
+
 /** @type {string} Current project ID used for resolving image sources. */
 let _projectId = "";
 
@@ -107,7 +294,7 @@ export function renderCanvas(
       "data-role": "page-root",
     });
     renderNode(
-      pageLayer,
+      buildShadow(pageLayer, doc),
       doc.root,
       selectedNodeId,
       onSelect,
@@ -163,7 +350,7 @@ export function renderCanvas(
     root._widthLabel = widthLabel;
     root._sizeLabel = sizeLabel;
   } else {
-    // Re-render: just update the page layer content inside existing structure
+    // Re-render: rebuild the page layer content inside existing structure
     const zoomWrap = root.querySelector(".canvas-zoom-wrap");
     zoomWrap.textContent = "";
     const pageLayer = el("div", {
@@ -171,7 +358,7 @@ export function renderCanvas(
       "data-role": "page-root",
     });
     renderNode(
-      pageLayer,
+      buildShadow(pageLayer, doc),
       doc.root,
       selectedNodeId,
       onSelect,
@@ -213,19 +400,23 @@ export function updateSizeLabel(root) {
 export function setupCanvasDragDrop(root, getDoc, onSelect, onDrop, onAddNode) {
   // Hover tracking: only one label at a time
   root.addEventListener("mouseover", (e) => {
-    const node = e.target.closest?.(".canvas-page-node");
+    const shadow = canvasPageShadow(root);
+    if (!shadow) return;
     // Remove previous hover
-    root
+    shadow
       .querySelectorAll(".canvas-hovered")
       .forEach((n) => n.classList.remove("canvas-hovered"));
-    if (node && root.contains(node)) {
-      node.classList.add("canvas-hovered");
-    }
+    const node = e
+      .composedPath()
+      .find((n) => n.classList && n.classList.contains("canvas-page-node"));
+    if (node) node.classList.add("canvas-hovered");
   });
   root.addEventListener("mouseout", (e) => {
+    const shadow = canvasPageShadow(root);
+    if (!shadow) return;
     const related = e.relatedTarget;
     if (!related || !root.contains(related)) {
-      root
+      shadow
         .querySelectorAll(".canvas-hovered")
         .forEach((n) => n.classList.remove("canvas-hovered"));
     }
@@ -503,14 +694,14 @@ function addInteraction(tag, nodeId, onSelect) {
     e.dataTransfer.setData("application/x-scm-node", nodeId);
     e.dataTransfer.effectAllowed = "move";
     _isDragging = true;
-    const layer = tag.closest(".canvas-page-layer");
+    const layer = tag.getRootNode()?.host;
     if (layer) layer.classList.add("drag-active");
     requestAnimationFrame(() => tag.classList.add("dragging"));
   });
   tag.addEventListener("dragend", () => {
     tag.classList.remove("dragging");
     _isDragging = false;
-    const layer = tag.closest(".canvas-page-layer");
+    const layer = tag.getRootNode()?.host;
     if (layer) layer.classList.remove("drag-active");
   });
 }
@@ -627,9 +818,12 @@ function showElementPicker(canvasRoot, mouseEvent, getDoc, onSelect) {
     );
 
     item.addEventListener("mouseenter", () => {
-      canvasRoot
-        .querySelectorAll(".canvas-picker-highlight")
-        .forEach((n) => n.classList.remove("canvas-picker-highlight"));
+      const shadow = canvasPageShadow(canvasRoot);
+      if (shadow) {
+        shadow
+          .querySelectorAll(".canvas-picker-highlight")
+          .forEach((n) => n.classList.remove("canvas-picker-highlight"));
+      }
       domEl.classList.add("canvas-picker-highlight");
     });
     item.addEventListener("mouseleave", () => {
@@ -665,9 +859,12 @@ function closeElementPicker(canvasRoot) {
   canvasRoot
     .querySelectorAll(".canvas-element-picker")
     .forEach((p) => p.remove());
-  canvasRoot
-    .querySelectorAll(".canvas-picker-highlight")
-    .forEach((n) => n.classList.remove("canvas-picker-highlight"));
+  const shadow = canvasPageShadow(canvasRoot);
+  if (shadow) {
+    shadow
+      .querySelectorAll(".canvas-picker-highlight")
+      .forEach((n) => n.classList.remove("canvas-picker-highlight"));
+  }
 }
 
 // ================== DROP TARGET DETECTION ==================
@@ -682,7 +879,7 @@ function findDropTarget(canvasRoot, dragEvent) {
   const pageLayer = canvasRoot.querySelector(".canvas-page-layer");
   if (!pageLayer) return null;
 
-  const dragging = pageLayer.querySelector(".dragging");
+  const dragging = canvasPageShadow(canvasRoot)?.querySelector(".dragging");
   const elements = document.elementsFromPoint(
     dragEvent.clientX,
     dragEvent.clientY,
@@ -732,7 +929,9 @@ function highlightDropTarget(canvasRoot, dragEvent) {
  * @returns {void}
  */
 function clearDropHighlights(canvasRoot) {
-  canvasRoot.querySelectorAll(".drop-target").forEach((el) => {
+  const shadow = canvasPageShadow(canvasRoot);
+  if (!shadow) return;
+  shadow.querySelectorAll(".drop-target").forEach((el) => {
     el.classList.remove(
       "drop-target",
       "drop-before",
