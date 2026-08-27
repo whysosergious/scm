@@ -5,12 +5,12 @@
 // Images resolved via /files/{projectId}/ for canvas display.
 // Canvas supports zoom (CSS transform scale) and resizable viewport width.
 
-import * as pm from '../page-model.js';
-import { el } from '../dom.js';
-import { setFrameVisible } from './page-boxmodel.js';
+import * as pm from "../page-model.js";
+import { el } from "../dom.js";
+import { setFrameVisible } from "./page-boxmodel.js";
 
 /** @type {string} Current project ID used for resolving image sources. */
-let _projectId = '';
+let _projectId = "";
 
 /** @type {boolean} True while a canvas node drag is in progress. */
 let _isDragging = false;
@@ -19,7 +19,9 @@ let _isDragging = false;
  * Returns whether a canvas node drag is in progress.
  * @returns {boolean}
  */
-export function isDragging() { return _isDragging; }
+export function isDragging() {
+  return _isDragging;
+}
 
 /** @type {boolean} When true, empty boxes render an "empty" marker (editor aid). */
 let _showEmpty = true;
@@ -30,14 +32,18 @@ let _showEmpty = true;
  * @param {boolean} v - Whether to show empty element markers.
  * @returns {void}
  */
-export function setShowEmpty(v) { _showEmpty = v; }
+export function setShowEmpty(v) {
+  _showEmpty = v;
+}
 
 /**
  * Sets the project ID used for resolving relative image paths.
  * @param {string} id - The project ID.
  * @returns {void}
  */
-export function setProjectId(id) { _projectId = id; }
+export function setProjectId(id) {
+  _projectId = id;
+}
 
 /**
  * Renders the visual canvas from the page document tree.
@@ -50,55 +56,98 @@ export function setProjectId(id) { _projectId = id; }
  * @param {function(string, number, string): void} onAddNode - Callback to add a new node.
  * @returns {void}
  */
-export function renderCanvas(root, doc, selectedNodeId, onSelect, onDrop, onAddNode) {
+export function renderCanvas(
+  root,
+  doc,
+  selectedNodeId,
+  onSelect,
+  onDrop,
+  onAddNode,
+) {
   // Preserve zoom/viewport state across re-renders
-  const existingZoomWrap = root.querySelector('.canvas-zoom-wrap');
-  const existingViewport = root.querySelector('.canvas-viewport');
-  const zoomPctEl = root.querySelector('.canvas-zoom-pct');
+  const existingZoomWrap = root.querySelector(".canvas-zoom-wrap");
+  const existingViewport = root.querySelector(".canvas-viewport");
+  const zoomPctEl = root.querySelector(".canvas-zoom-pct");
 
   if (!doc || !doc.root) {
-    root.textContent = '';
-    root.append(el('div', { class: 'page-canvas-empty muted-note', text: 'No page loaded' }));
+    root.textContent = "";
+    root.append(
+      el("div", {
+        class: "page-canvas-empty muted-note",
+        text: "No page loaded",
+      }),
+    );
     return;
   }
 
   // If first render, build the full structure
   if (!existingViewport) {
-    root.textContent = '';
+    root.textContent = "";
 
     // Scroll container (centers the viewport, handles overflow)
-    const scroll = el('div', { class: 'canvas-viewport-scroll' });
+    const scroll = el("div", { class: "canvas-viewport-scroll" });
     root.append(scroll);
 
     // Viewport container (resizable width)
-    const viewport = el('div', { class: 'canvas-viewport' });
-    viewport.style.width = '1200px';
+    const viewport = el("div", { class: "canvas-viewport" });
+    const savedW = parseInt(localStorage.getItem("scm-canvas-width"), 10);
+    const savedH = parseInt(localStorage.getItem("scm-canvas-height"), 10);
+    viewport.style.width =
+      savedW >= 200 && savedW <= 2400 ? `${savedW}px` : "1200px";
+    if (savedH >= 80) viewport.style.height = `${savedH}px`;
     scroll.append(viewport);
 
     // Zoom wrapper (CSS transform scale)
-    const zoomWrap = el('div', { class: 'canvas-zoom-wrap' });
+    const zoomWrap = el("div", { class: "canvas-zoom-wrap" });
     viewport.append(zoomWrap);
 
     // Page layer (white page)
-    const pageLayer = el('div', { class: 'canvas-page-layer' });
-    renderNode(pageLayer, doc.root, selectedNodeId, onSelect, onDrop, onAddNode);
+    const pageLayer = el("div", {
+      class: "canvas-page-layer",
+      "data-role": "html_body",
+    });
+    renderNode(
+      pageLayer,
+      doc.root,
+      selectedNodeId,
+      onSelect,
+      onDrop,
+      onAddNode,
+    );
     zoomWrap.append(pageLayer);
 
     // Resize handles live in the viewport (outside zoom-wrap) so they are NOT
     // scaled by the zoom transform. JS positions them at the visual edges.
-    const resizeW = el('div', { class: 'canvas-resize-handle canvas-resize-w', title: 'Drag to resize width' });
-    const resizeH = el('div', { class: 'canvas-resize-handle canvas-resize-h', title: 'Drag to resize height' });
-    const widthLabel = el('div', { class: 'canvas-width-label' });
+    const resizeW = el("div", {
+      class: "canvas-resize-handle canvas-resize-w",
+      title: "Drag to resize width",
+    });
+    const resizeH = el("div", {
+      class: "canvas-resize-handle canvas-resize-h",
+      title: "Drag to resize height",
+    });
+    const widthLabel = el("div", { class: "canvas-width-label" });
     viewport.append(resizeW, resizeH, widthLabel);
 
     // Canvas info / zoom bar
-    const zoomBar = el('div', { class: 'canvas-zoom-bar' });
-    const sizeLabel = el('span', { class: 'canvas-size-label', text: '—' });
-    const zoomOut = el('button', { title: 'Zoom out (Ctrl+-)', text: '−' });
-    const zoomPct = el('span', { class: 'canvas-zoom-pct', text: '100%' });
-    const zoomIn = el('button', { title: 'Zoom in (Ctrl++)', text: '+' });
-    const zoomFit = el('button', { class: 'canvas-zoom-fit', title: 'Fit to width', text: 'Fit' });
-    zoomBar.append(sizeLabel, el('span', { class: 'canvas-zoom-spacer' }), zoomOut, zoomPct, zoomIn, zoomFit);
+    const zoomBar = el("div", { class: "canvas-zoom-bar" });
+    const sizeLabel = el("span", { class: "canvas-size-label", text: "—" });
+    const zoomOut = el("button", { title: "Zoom out (Ctrl+-)", text: "−" });
+    const zoomPct = el("span", { class: "canvas-zoom-pct", text: "100%" });
+    const zoomIn = el("button", { title: "Zoom in (Ctrl++)", text: "+" });
+    const zoomFit = el("button", {
+      class: "canvas-zoom-fit",
+      title: "Fit to width",
+      text: "Fit",
+    });
+    zoomBar.append(
+      sizeLabel,
+      el("span", { class: "canvas-zoom-spacer" }),
+      zoomOut,
+      zoomPct,
+      zoomIn,
+      zoomFit,
+    );
     root.append(zoomBar);
 
     // Wire zoom controls (callbacks set by page-editor.js via setupCanvasZoom)
@@ -115,9 +164,9 @@ export function renderCanvas(root, doc, selectedNodeId, onSelect, onDrop, onAddN
     root._sizeLabel = sizeLabel;
   } else {
     // Re-render: just update the page layer content inside existing structure
-    const zoomWrap = root.querySelector('.canvas-zoom-wrap');
-    zoomWrap.textContent = '';
-    const pageLayer = el('div', { class: 'canvas-page-layer' });
+    const zoomWrap = root.querySelector(".canvas-zoom-wrap");
+    zoomWrap.textContent = "";
+    const pageLayer = el("div", { class: "canvas-page-layer" });
     renderNode(pageLayer, doc.root, selectedId, onSelect, onDrop, onAddNode);
     zoomWrap.append(pageLayer);
   }
@@ -153,23 +202,27 @@ export function updateSizeLabel(root) {
  */
 export function setupCanvasDragDrop(root, getDoc, onSelect, onDrop, onAddNode) {
   // Hover tracking: only one label at a time
-  root.addEventListener('mouseover', (e) => {
-    const node = e.target.closest?.('.canvas-page-node');
+  root.addEventListener("mouseover", (e) => {
+    const node = e.target.closest?.(".canvas-page-node");
     // Remove previous hover
-    root.querySelectorAll('.canvas-hovered').forEach((n) => n.classList.remove('canvas-hovered'));
+    root
+      .querySelectorAll(".canvas-hovered")
+      .forEach((n) => n.classList.remove("canvas-hovered"));
     if (node && root.contains(node)) {
-      node.classList.add('canvas-hovered');
+      node.classList.add("canvas-hovered");
     }
   });
-  root.addEventListener('mouseout', (e) => {
+  root.addEventListener("mouseout", (e) => {
     const related = e.relatedTarget;
     if (!related || !root.contains(related)) {
-      root.querySelectorAll('.canvas-hovered').forEach((n) => n.classList.remove('canvas-hovered'));
+      root
+        .querySelectorAll(".canvas-hovered")
+        .forEach((n) => n.classList.remove("canvas-hovered"));
     }
   });
 
   // Alt+click: element picker
-  root.addEventListener('click', (e) => {
+  root.addEventListener("click", (e) => {
     if (!e.altKey) return;
     e.preventDefault();
     e.stopPropagation();
@@ -177,33 +230,33 @@ export function setupCanvasDragDrop(root, getDoc, onSelect, onDrop, onAddNode) {
   });
 
   // Hide transform frame during drag (root listener survives page-layer re-renders)
-  root.addEventListener('dragstart', () => setFrameVisible(root, false));
-  root.addEventListener('dragend', () => {
+  root.addEventListener("dragstart", () => setFrameVisible(root, false));
+  root.addEventListener("dragend", () => {
     setFrameVisible(root, true);
     _isDragging = false;
-    root.querySelector('.canvas-page-layer')?.classList.remove('drag-active');
+    root.querySelector(".canvas-page-layer")?.classList.remove("drag-active");
   });
 
   // Drag/drop
-  root.addEventListener('dragover', (e) => {
+  root.addEventListener("dragover", (e) => {
     e.preventDefault();
-    const hasNode = e.dataTransfer.types.includes('application/x-scm-node');
-    e.dataTransfer.dropEffect = hasNode ? 'move' : 'copy';
+    const hasNode = e.dataTransfer.types.includes("application/x-scm-node");
+    e.dataTransfer.dropEffect = hasNode ? "move" : "copy";
     highlightDropTarget(root, e);
   });
 
-  root.addEventListener('dragleave', (e) => {
+  root.addEventListener("dragleave", (e) => {
     if (!root.contains(e.relatedTarget)) {
       clearDropHighlights(root);
     }
   });
 
-  root.addEventListener('drop', (e) => {
+  root.addEventListener("drop", (e) => {
     e.preventDefault();
     clearDropHighlights(root);
 
-    const componentType = e.dataTransfer.getData('application/x-scm-component');
-    const nodeId = e.dataTransfer.getData('application/x-scm-node');
+    const componentType = e.dataTransfer.getData("application/x-scm-component");
+    const nodeId = e.dataTransfer.getData("application/x-scm-node");
     const doc = getDoc();
     if (!doc || !doc.root) return;
 
@@ -223,13 +276,13 @@ export function setupCanvasDragDrop(root, getDoc, onSelect, onDrop, onAddNode) {
       const targetNode = pm.findNode(doc.root, targetNodeId);
       if (!targetNode) return;
 
-      if (position === 'inside' && targetNode.type === 'box') {
+      if (position === "inside" && targetNode.type === "box") {
         onAddNode(targetNodeId, 0, componentType);
-      } else if (position === 'before' || position === 'after') {
+      } else if (position === "before" || position === "after") {
         const parent = pm.findParent(doc.root, targetNodeId);
         if (parent && parent.children) {
           const idx = parent.children.findIndex((c) => c.id === targetNodeId);
-          const at = position === 'before' ? idx : idx + 1;
+          const at = position === "before" ? idx : idx + 1;
           onAddNode(parent.id, at, componentType);
         }
       }
@@ -237,13 +290,17 @@ export function setupCanvasDragDrop(root, getDoc, onSelect, onDrop, onAddNode) {
       const targetNode = pm.findNode(doc.root, targetNodeId);
       if (!targetNode) return;
 
-      if (position === 'inside' && targetNode.type === 'box') {
-        onDrop(nodeId, targetNodeId, targetNode.children ? targetNode.children.length : 0);
-      } else if (position === 'before' || position === 'after') {
+      if (position === "inside" && targetNode.type === "box") {
+        onDrop(
+          nodeId,
+          targetNodeId,
+          targetNode.children ? targetNode.children.length : 0,
+        );
+      } else if (position === "before" || position === "after") {
         const parent = pm.findParent(doc.root, targetNodeId);
         if (parent && parent.children) {
           const idx = parent.children.findIndex((c) => c.id === targetNodeId);
-          const at = position === 'before' ? idx : idx + 1;
+          const at = position === "before" ? idx : idx + 1;
           onDrop(nodeId, parent.id, at);
         }
       }
@@ -264,11 +321,11 @@ export function setupCanvasDragDrop(root, getDoc, onSelect, onDrop, onAddNode) {
  * @returns {void}
  */
 function renderNode(parent, node, selectedId, onSelect, onDrop, onAddNode) {
-  if (node.type === 'box') {
+  if (node.type === "box") {
     renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode);
-  } else if (node.type === 'text') {
+  } else if (node.type === "text") {
     renderText(parent, node, selectedId, onSelect);
-  } else if (node.type === 'image') {
+  } else if (node.type === "image") {
     renderImage(parent, node, selectedId, onSelect);
   }
 }
@@ -284,19 +341,19 @@ function renderNode(parent, node, selectedId, onSelect, onDrop, onAddNode) {
  * @returns {void}
  */
 function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
-  const element = (node.props && node.props.element) || 'div';
+  const element = (node.props && node.props.element) || "div";
 
   // Media players (video/audio) render via a selectable wrapper
-  if (element === 'video' || element === 'audio') {
+  if (element === "video" || element === "audio") {
     renderMedia(parent, node, selectedId, onSelect);
     return;
   }
 
   const tag = document.createElement(element);
   tag.dataset.nodeId = node.id;
-  tag.dataset.nodeType = 'box';
+  tag.dataset.nodeType = "box";
   tag.dataset.element = element;
-  tag.classList.add('canvas-page-node');
+  tag.classList.add("canvas-page-node");
   applyStyles(tag, node);
   applyClasses(tag, node);
   applyAttrs(tag, node);
@@ -306,11 +363,11 @@ function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
       renderNode(tag, child, selectedId, onSelect, onDrop, onAddNode);
     }
   } else if (_showEmpty) {
-    tag.classList.add('canvas-empty-box');
+    tag.classList.add("canvas-empty-box");
   }
 
   addInteraction(tag, node.id, onSelect);
-  if (node.id === selectedId) tag.classList.add('selected');
+  if (node.id === selectedId) tag.classList.add("selected");
 
   parent.append(tag);
 }
@@ -324,19 +381,19 @@ function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
  * @returns {void}
  */
 function renderText(parent, node, selectedId, onSelect) {
-  const element = (node.props && node.props.element) || 'p';
+  const element = (node.props && node.props.element) || "p";
   const tag = document.createElement(element);
   tag.dataset.nodeId = node.id;
-  tag.dataset.nodeType = 'text';
+  tag.dataset.nodeType = "text";
   tag.dataset.element = element;
-  tag.classList.add('canvas-page-node');
-  tag.textContent = (node.props && node.props.value) || '';
+  tag.classList.add("canvas-page-node");
+  tag.textContent = (node.props && node.props.value) || "";
   applyStyles(tag, node);
   applyClasses(tag, node);
   applyAttrs(tag, node);
 
   addInteraction(tag, node.id, onSelect);
-  if (node.id === selectedId) tag.classList.add('selected');
+  if (node.id === selectedId) tag.classList.add("selected");
   parent.append(tag);
 }
 
@@ -350,23 +407,23 @@ function renderText(parent, node, selectedId, onSelect) {
  */
 function renderImage(parent, node, selectedId, onSelect) {
   // Wrap img in a div because ::after doesn't work on replaced elements
-  const wrapper = document.createElement('div');
+  const wrapper = document.createElement("div");
   wrapper.dataset.nodeId = node.id;
-  wrapper.dataset.nodeType = 'image';
-  wrapper.dataset.element = 'img';
-  wrapper.classList.add('canvas-page-node');
+  wrapper.dataset.nodeType = "image";
+  wrapper.dataset.element = "img";
+  wrapper.classList.add("canvas-page-node");
   applyStyles(wrapper, node);
   applyClasses(wrapper, node);
 
-  const tag = document.createElement('img');
+  const tag = document.createElement("img");
   tag.src = resolveImgSrc(node.props && node.props.src);
-  tag.alt = (node.props && node.props.alt) || '';
-  tag.style.maxWidth = '100%';
-  tag.style.display = 'block';
+  tag.alt = (node.props && node.props.alt) || "";
+  tag.style.maxWidth = "100%";
+  tag.style.display = "block";
   wrapper.append(tag);
 
   addInteraction(wrapper, node.id, onSelect);
-  if (node.id === selectedId) wrapper.classList.add('selected');
+  if (node.id === selectedId) wrapper.classList.add("selected");
   parent.append(wrapper);
 }
 
@@ -381,12 +438,12 @@ function renderImage(parent, node, selectedId, onSelect) {
  * @returns {void}
  */
 function renderMedia(parent, node, selectedId, onSelect) {
-  const element = (node.props && node.props.element) || 'video';
-  const wrapper = document.createElement('div');
+  const element = (node.props && node.props.element) || "video";
+  const wrapper = document.createElement("div");
   wrapper.dataset.nodeId = node.id;
-  wrapper.dataset.nodeType = 'box';
+  wrapper.dataset.nodeType = "box";
   wrapper.dataset.element = element;
-  wrapper.classList.add('canvas-page-node', 'canvas-media');
+  wrapper.classList.add("canvas-page-node", "canvas-media");
   applyStyles(wrapper, node);
   applyClasses(wrapper, node);
 
@@ -395,7 +452,7 @@ function renderMedia(parent, node, selectedId, onSelect) {
   wrapper.append(tag);
 
   addInteraction(wrapper, node.id, onSelect);
-  if (node.id === selectedId) wrapper.classList.add('selected');
+  if (node.id === selectedId) wrapper.classList.add("selected");
   parent.append(wrapper);
 }
 
@@ -410,9 +467,9 @@ function renderMedia(parent, node, selectedId, onSelect) {
 function applyAttrs(tag, node) {
   const attrs = (node && node.attrs) || {};
   for (const [key, value] of Object.entries(attrs)) {
-    if (key === 'style' || key === 'class' || key === 'id') continue;
+    if (key === "style" || key === "class" || key === "id") continue;
     if (/^on/i.test(key)) continue;
-    tag.setAttribute(key, value == null ? '' : String(value));
+    tag.setAttribute(key, value == null ? "" : String(value));
   }
 }
 
@@ -424,27 +481,27 @@ function applyAttrs(tag, node) {
  * @returns {void}
  */
 function addInteraction(tag, nodeId, onSelect) {
-  tag.addEventListener('click', (e) => {
+  tag.addEventListener("click", (e) => {
     if (e.altKey) return; // handled by element picker
     e.stopPropagation();
     onSelect(nodeId);
   });
 
   tag.draggable = true;
-  tag.addEventListener('dragstart', (e) => {
+  tag.addEventListener("dragstart", (e) => {
     e.stopPropagation();
-    e.dataTransfer.setData('application/x-scm-node', nodeId);
-    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData("application/x-scm-node", nodeId);
+    e.dataTransfer.effectAllowed = "move";
     _isDragging = true;
-    const layer = tag.closest('.canvas-page-layer');
-    if (layer) layer.classList.add('drag-active');
-    requestAnimationFrame(() => tag.classList.add('dragging'));
+    const layer = tag.closest(".canvas-page-layer");
+    if (layer) layer.classList.add("drag-active");
+    requestAnimationFrame(() => tag.classList.add("dragging"));
   });
-  tag.addEventListener('dragend', () => {
-    tag.classList.remove('dragging');
+  tag.addEventListener("dragend", () => {
+    tag.classList.remove("dragging");
     _isDragging = false;
-    const layer = tag.closest('.canvas-page-layer');
-    if (layer) layer.classList.remove('drag-active');
+    const layer = tag.closest(".canvas-page-layer");
+    if (layer) layer.classList.remove("drag-active");
   });
 }
 
@@ -454,9 +511,10 @@ function addInteraction(tag, nodeId, onSelect) {
  * @returns {string} Resolved absolute URL or empty string if no source.
  */
 function resolveImgSrc(src) {
-  if (!src) return '';
+  if (!src) return "";
   // Already absolute or data URI
-  if (src.startsWith('/') || src.startsWith('http') || src.startsWith('data:')) return src;
+  if (src.startsWith("/") || src.startsWith("http") || src.startsWith("data:"))
+    return src;
   // Resolve relative to /files/{projectId}/
   return `/files/${_projectId}/${src}`;
 }
@@ -470,7 +528,11 @@ function resolveImgSrc(src) {
 function applyStyles(tag, node) {
   if (!node.styles) return;
   for (const [k, v] of Object.entries(node.styles)) {
-    try { tag.style.setProperty(k, v); } catch (_) { /* skip */ }
+    try {
+      tag.style.setProperty(k, v);
+    } catch (_) {
+      /* skip */
+    }
   }
 }
 
@@ -499,14 +561,17 @@ function applyClasses(tag, node) {
 function showElementPicker(canvasRoot, mouseEvent, getDoc, onSelect) {
   closeElementPicker(canvasRoot);
 
-  const pageLayer = canvasRoot.querySelector('.canvas-page-layer');
+  const pageLayer = canvasRoot.querySelector(".canvas-page-layer");
   if (!pageLayer) return;
 
   const doc = getDoc();
   if (!doc) return;
 
   // Get all elements at cursor
-  const allEls = document.elementsFromPoint(mouseEvent.clientX, mouseEvent.clientY);
+  const allEls = document.elementsFromPoint(
+    mouseEvent.clientX,
+    mouseEvent.clientY,
+  );
   const nodes = [];
   const seen = new Set();
 
@@ -525,32 +590,42 @@ function showElementPicker(canvasRoot, mouseEvent, getDoc, onSelect) {
   if (nodes.length === 0) return;
 
   // Build picker dropdown
-  const picker = el('div', { class: 'canvas-element-picker' });
+  const picker = el("div", { class: "canvas-element-picker" });
   picker.style.top = `${mouseEvent.clientY}px`;
   picker.style.left = `${mouseEvent.clientX}px`;
 
   for (const { domEl, treeNode } of nodes) {
     const element = treeNode.props?.element || treeNode.type;
-    const typeBadge = treeNode.type === 'box' ? 'box' : treeNode.type === 'text' ? 'text' : 'img';
-    const label = treeNode.type === 'text'
-      ? `${element}: "${(treeNode.props?.value || '').slice(0, 30)}"`
-      : treeNode.type === 'image'
-        ? `img: ${treeNode.props?.alt || treeNode.props?.src || ''}`
-        : element;
+    const typeBadge =
+      treeNode.type === "box"
+        ? "box"
+        : treeNode.type === "text"
+          ? "text"
+          : "img";
+    const label =
+      treeNode.type === "text"
+        ? `${element}: "${(treeNode.props?.value || "").slice(0, 30)}"`
+        : treeNode.type === "image"
+          ? `img: ${treeNode.props?.alt || treeNode.props?.src || ""}`
+          : element;
 
-    const item = el('div', { class: 'canvas-picker-item' },
-      el('span', { class: 'canvas-picker-badge', text: typeBadge }),
-      el('span', { text: label }),
+    const item = el(
+      "div",
+      { class: "canvas-picker-item" },
+      el("span", { class: "canvas-picker-badge", text: typeBadge }),
+      el("span", { text: label }),
     );
 
-    item.addEventListener('mouseenter', () => {
-      canvasRoot.querySelectorAll('.canvas-picker-highlight').forEach((n) => n.classList.remove('canvas-picker-highlight'));
-      domEl.classList.add('canvas-picker-highlight');
+    item.addEventListener("mouseenter", () => {
+      canvasRoot
+        .querySelectorAll(".canvas-picker-highlight")
+        .forEach((n) => n.classList.remove("canvas-picker-highlight"));
+      domEl.classList.add("canvas-picker-highlight");
     });
-    item.addEventListener('mouseleave', () => {
-      domEl.classList.remove('canvas-picker-highlight');
+    item.addEventListener("mouseleave", () => {
+      domEl.classList.remove("canvas-picker-highlight");
     });
-    item.addEventListener('click', (e) => {
+    item.addEventListener("click", (e) => {
       e.stopPropagation();
       onSelect(treeNode.id);
       closeElementPicker(canvasRoot);
@@ -565,10 +640,10 @@ function showElementPicker(canvasRoot, mouseEvent, getDoc, onSelect) {
   const close = (e) => {
     if (!picker.contains(e.target)) {
       closeElementPicker(canvasRoot);
-      document.removeEventListener('click', close, true);
+      document.removeEventListener("click", close, true);
     }
   };
-  setTimeout(() => document.addEventListener('click', close, true), 0);
+  setTimeout(() => document.addEventListener("click", close, true), 0);
 }
 
 /**
@@ -577,8 +652,12 @@ function showElementPicker(canvasRoot, mouseEvent, getDoc, onSelect) {
  * @returns {void}
  */
 function closeElementPicker(canvasRoot) {
-  canvasRoot.querySelectorAll('.canvas-element-picker').forEach((p) => p.remove());
-  canvasRoot.querySelectorAll('.canvas-picker-highlight').forEach((n) => n.classList.remove('canvas-picker-highlight'));
+  canvasRoot
+    .querySelectorAll(".canvas-element-picker")
+    .forEach((p) => p.remove());
+  canvasRoot
+    .querySelectorAll(".canvas-picker-highlight")
+    .forEach((n) => n.classList.remove("canvas-picker-highlight"));
 }
 
 // ================== DROP TARGET DETECTION ==================
@@ -590,11 +669,14 @@ function closeElementPicker(canvasRoot) {
  * @returns {{element: HTMLElement, position: string}|null} Target element and drop position, or null.
  */
 function findDropTarget(canvasRoot, dragEvent) {
-  const pageLayer = canvasRoot.querySelector('.canvas-page-layer');
+  const pageLayer = canvasRoot.querySelector(".canvas-page-layer");
   if (!pageLayer) return null;
 
-  const dragging = pageLayer.querySelector('.dragging');
-  const elements = document.elementsFromPoint(dragEvent.clientX, dragEvent.clientY);
+  const dragging = pageLayer.querySelector(".dragging");
+  const elements = document.elementsFromPoint(
+    dragEvent.clientX,
+    dragEvent.clientY,
+  );
 
   for (const el of elements) {
     if (dragging && (el === dragging || dragging.contains(el))) continue;
@@ -607,12 +689,12 @@ function findDropTarget(canvasRoot, dragEvent) {
     const zone = height * 0.25;
 
     let position;
-    if (el.dataset.nodeType === 'box' && relY > zone && relY < height - zone) {
-      position = 'inside';
+    if (el.dataset.nodeType === "box" && relY > zone && relY < height - zone) {
+      position = "inside";
     } else if (relY < zone) {
-      position = 'before';
+      position = "before";
     } else {
-      position = 'after';
+      position = "after";
     }
 
     return { element: el, position };
@@ -631,7 +713,7 @@ function highlightDropTarget(canvasRoot, dragEvent) {
   clearDropHighlights(canvasRoot);
   const target = findDropTarget(canvasRoot, dragEvent);
   if (!target) return;
-  target.element.classList.add('drop-target', `drop-${target.position}`);
+  target.element.classList.add("drop-target", `drop-${target.position}`);
 }
 
 /**
@@ -640,7 +722,12 @@ function highlightDropTarget(canvasRoot, dragEvent) {
  * @returns {void}
  */
 function clearDropHighlights(canvasRoot) {
-  canvasRoot.querySelectorAll('.drop-target').forEach((el) => {
-    el.classList.remove('drop-target', 'drop-before', 'drop-after', 'drop-inside');
+  canvasRoot.querySelectorAll(".drop-target").forEach((el) => {
+    el.classList.remove(
+      "drop-target",
+      "drop-before",
+      "drop-after",
+      "drop-inside",
+    );
   });
 }

@@ -1574,8 +1574,8 @@ input[type="text"].title-input.invalid {
   transition: transform 0.1s ease;
   height: 100%;
   width: 100%;
-  padding-bottom: 24px;
-  overflow: auto;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
 
   /* temp */
   border: 1px solid #111;
@@ -1585,11 +1585,9 @@ input[type="text"].title-input.invalid {
 .canvas-page-layer {
   position: relative;
   min-height: 200px;
-  background: #fff;
-  border-radius: var(--radius);
-  padding: 24px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
-  overflow: hidden;
+  height: 100%;
+  overflow: auto;
+  background-color: #fff;
 }
 
 /* Viewport resize handles — centered on the edge, sitting just outside so they

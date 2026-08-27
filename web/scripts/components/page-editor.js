@@ -450,6 +450,8 @@ function renderEditor(root, project) {
             handle.classList.remove('dragging');
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
+            localStorage.setItem('scm-canvas-width', viewport.offsetWidth);
+            localStorage.setItem('scm-canvas-height', viewport.offsetHeight);
             window.removeEventListener('pointermove', onMove);
             window.removeEventListener('pointerup', onUp);
           }
