@@ -1770,42 +1770,10 @@ input[type="text"].title-input.invalid {
   outline-color: rgba(66, 133, 244, 0.25);
 }
 
-.canvas-page-node.canvas-hovered:not(.dragging)::after {
-  content: attr(data-element);
-  position: absolute;
-  top: -18px;
-  left: 0;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: rgba(66, 133, 244, 0.6);
-  color: #fff;
-  pointer-events: none;
-  white-space: nowrap;
-  z-index: 5;
-}
-
-/* Selected indicator: deep/opaque — label only when nothing is hovered */
+/* Selected indicator: deep/opaque */
 .canvas-page-node.selected {
   outline-color: var(--color-primary);
   outline-width: 2px;
-}
-
-.canvas-page-node.selected:not(.canvas-hovered)::after {
-  content: attr(data-element);
-  position: absolute;
-  top: -18px;
-  left: 0;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 3px;
-  background: var(--color-primary);
-  color: #fff;
-  pointer-events: none;
-  white-space: nowrap;
-  z-index: 5;
 }
 
 /* Dragging state */
