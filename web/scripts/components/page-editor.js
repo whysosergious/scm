@@ -7,7 +7,7 @@ import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
 import { patch, refreshGitStatus, refreshPages, selectedProject, setPageDirty, state } from '../state.js';
 import { renderPalette } from './page-palette.js';
-import { renderCanvas, setupCanvasDragDrop, setProjectId, isDragging, setShowEmpty, updateSizeLabel, canvasPageShadow } from './page-canvas.js';
+import { renderCanvas, setProjectId, isDragging, setShowEmpty, updateSizeLabel, canvasPageShadow } from './page-canvas.js';
 import { renderInspector, renderHeadInspector } from './page-inspector.js';
 import { renderTree } from './page-tree.js';
 import { renderBoxModel, clearBoxModel } from './page-boxmodel.js';
@@ -17,6 +17,10 @@ import { toast, toastError } from './toast.js';
 let _prevBeforeUnload = null;
 /** @type {function|null} Previous escape keydown handler to remove on re-render. */
 let _prevEscapeHandler = null;
+/** @type {function|null} Previous document click handler closing the toolbar menu. */
+let _prevMenuDocClick = null;
+/** @type {function|null} Previous keydown handler closing the toolbar menu. */
+let _prevMenuKey = null;
 
 /**
  * Top-level entry point for the page editor. Shows the appropriate view
@@ -144,24 +148,35 @@ function renderEditor(root, project) {
   // Layout
   const wrap = el('div', { class: 'page-editor-wrap' });
 
-  // Toolbar
-  const saveBtn = el('button', { class: 'btn-save', disabled: true }, icon('save', 16), ' Save');
-  const generateBtn = el('button', { class: 'btn-secondary' }, icon('code', 16), ' Generate');
-  const previewBtn = el('button', { class: 'btn-secondary' }, icon('open_in_new', 16), ' Preview');
-  const importHtmlBtn = el('button', { class: 'btn-secondary' }, icon('upload', 16), ' Import HTML');
+  // Toolbar actions — these live inside the burger menu
+  const saveBtn = el('button', { class: 'menu-item menu-item-primary', disabled: true }, icon('save', 18), el('span', { text: 'Save' }));
+  const generateBtn = el('button', { class: 'menu-item' }, icon('code', 18), el('span', { text: 'Generate' }));
+  const previewBtn = el('button', { class: 'menu-item' }, icon('open_in_new', 18), el('span', { text: 'Preview' }));
+  const importHtmlBtn = el('button', { class: 'menu-item' }, icon('upload', 18), el('span', { text: 'Import HTML' }));
   importHtmlBtn.addEventListener('click', async () => {
     const mod = await import('./page-import-modal.js');
     mod.openHtmlImportModal();
   });
   const dirtyIndicator = el('span', { class: 'muted-note', text: '', style: { display: 'none' } });
 
-  // Toggle: show empty element markers on the canvas
-  let showEmpty = true;
-  const emptyToggle = el('button', { class: 'btn-toggle active', title: 'Show empty elements' },
-    icon('visibility', 16), el('span', { text: ' Empty' }));
+  // Persisted menu settings
+  const LS_SHOW_EMPTY = 'scm-show-empty';
+  const LS_CONFIRM_CLOSE = 'scm-confirm-close';
+  let showEmpty = localStorage.getItem(LS_SHOW_EMPTY) !== 'false';
+  let confirmClose = localStorage.getItem(LS_CONFIRM_CLOSE) !== 'false';
+
+  setShowEmpty(showEmpty);
+
+  // VIEW: show empty element markers on the canvas
+  const emptyCheck = el('span', { class: 'menu-check-box' + (showEmpty ? ' checked' : '') }, icon('check', 16));
+  const emptyToggle = el('div', { class: 'menu-item menu-check', title: 'Show empty elements' },
+    emptyCheck,
+    el('span', { text: 'Show empty elements' }),
+  );
   emptyToggle.addEventListener('click', () => {
     showEmpty = !showEmpty;
-    emptyToggle.classList.toggle('active', showEmpty);
+    emptyCheck.classList.toggle('checked', showEmpty);
+    localStorage.setItem(LS_SHOW_EMPTY, showEmpty);
     setShowEmpty(showEmpty);
     renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
     if (selectedNodeId) {
@@ -172,18 +187,63 @@ function renderEditor(root, project) {
     }
   });
 
+  // OPTIONS: warn before closing the tab/browser with unsaved changes
+  const confirmCheck = el('span', { class: 'menu-check-box' + (confirmClose ? ' checked' : '') }, icon('check', 16));
+  const confirmToggle = el('div', { class: 'menu-item menu-check', title: 'Warn before closing with unsaved changes' },
+    confirmCheck,
+    el('span', { text: 'Confirm on close' }),
+  );
+  confirmToggle.addEventListener('click', () => {
+    confirmClose = !confirmClose;
+    confirmCheck.classList.toggle('checked', confirmClose);
+    localStorage.setItem(LS_CONFIRM_CLOSE, confirmClose);
+  });
+
+  // Burger menu
+  const burgerBtn = el('button', { class: 'btn-icon burger', title: 'Menu' }, icon('menu', 20));
+  const pageMenu = el('div', { class: 'menu-dropdown page-menu', style: { display: 'none' } },
+    saveBtn,
+    previewBtn,
+    generateBtn,
+    importHtmlBtn,
+    el('div', { class: 'menu-divider' }),
+    el('div', { class: 'menu-section-title', text: 'VIEW' }),
+    emptyToggle,
+    el('div', { class: 'menu-divider' }),
+    el('div', { class: 'menu-section-title', text: 'OPTIONS' }),
+    confirmToggle,
+  );
+
+  function closeMenu() { pageMenu.style.display = 'none'; }
+  burgerBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    pageMenu.style.display = pageMenu.style.display === 'none' ? 'block' : 'none';
+  });
+  pageMenu.addEventListener('click', (e) => {
+    const item = e.target.closest('.menu-item');
+    if (item && !item.classList.contains('menu-check')) closeMenu();
+  });
+  // Capture phase so it fires even when a canvas node stops propagation (bubble)
+  if (_prevMenuDocClick) document.removeEventListener('click', _prevMenuDocClick, true);
+  _prevMenuDocClick = (e) => {
+    if (pageMenu.style.display !== 'none' && !pageMenu.contains(e.target) && e.target !== burgerBtn) {
+      closeMenu();
+    }
+  };
+  document.addEventListener('click', _prevMenuDocClick, true);
+  if (_prevMenuKey) document.removeEventListener('keydown', _prevMenuKey);
+  _prevMenuKey = (e) => {
+    if (e.key === 'Escape' && pageMenu.style.display !== 'none') closeMenu();
+  };
+  document.addEventListener('keydown', _prevMenuKey);
+
   const toolbar = el('div', { class: 'page-toolbar' },
     el('div', { class: 'page-toolbar-left' },
+      burgerBtn,
       el('span', { class: 'mono-title', text: name }),
       dirtyIndicator,
     ),
-    el('div', { class: 'page-toolbar-right' },
-      emptyToggle,
-      importHtmlBtn,
-      generateBtn,
-      previewBtn,
-      saveBtn,
-    ),
+    pageMenu,
   );
 
   // Two-column layout: canvas | resize handle | tabbed right panel
@@ -286,9 +346,7 @@ function renderEditor(root, project) {
   // Initial tab content render
   switchTab(activeTab);
 
-  // Set up canvas drag/drop listeners once (not on every re-render)
   setProjectId(project.id);
-  setupCanvasDragDrop(canvasEl, () => doc, selectNode, onDrop, onAddNode);
 
   // Escape key: deselect node
   if (_prevEscapeHandler) document.removeEventListener('keydown', _prevEscapeHandler);
@@ -471,7 +529,7 @@ function renderEditor(root, project) {
     setPageDirty(v);
     saveBtn.disabled = !v;
     dirtyIndicator.style.display = v ? 'inline' : 'none';
-    dirtyIndicator.textContent = v ? '(unsaved changes)' : '';
+    dirtyIndicator.textContent = v ? '*' : '';
   }
 
   function renderBoxModelNow() {
@@ -674,9 +732,9 @@ function renderEditor(root, project) {
   });
   resizeObs.observe(canvasEl);
 
-  // Warn before leaving with unsaved changes
+  // Warn before leaving with unsaved changes (honors the "Confirm on close" setting)
   function onBeforeUnload(e) {
-    if (dirty) { e.preventDefault(); e.returnValue = ''; }
+    if (dirty && confirmClose) { e.preventDefault(); e.returnValue = ''; }
   }
   window.addEventListener('beforeunload', onBeforeUnload);
   _prevBeforeUnload = onBeforeUnload;

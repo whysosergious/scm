@@ -164,11 +164,20 @@ function buildPageCss(doc) {
 /**
  * (Re)builds the page-root shadow root: clears it, injects the editor canvas
  * CSS and the page's own styles, and <link>s external stylesheets from <head>.
+ * After building, wires the canvas interactions to the shadow root so events
+ * originating inside the page tree reach the handlers (they do not always
+ * bubble out to the canvas host).
  * @param {HTMLElement} pageLayer - The page-root host element.
  * @param {Object|null} doc - Page document.
+ * @param {Object|null} doc - Page document.
+ * @param {function(): Object|null} getDoc - Returns the current page document (or null).
+ * @param {function(string): void} onSelect - Callback when a node is selected.
+ * @param {function(string, string, number): void} onDrop - Callback when a node is dropped.
+ * @param {function(string, number, string): void} onAddNode - Callback to add a new node.
+ * @param {HTMLElement} canvasRoot - The canvas container element (for picker/drop wiring).
  * @returns {ShadowRoot}
  */
-function buildShadow(pageLayer, doc) {
+function buildShadow(pageLayer, doc, getDoc, onSelect, onDrop, onAddNode, canvasRoot) {
   let shadow = pageLayer.shadowRoot;
   if (!shadow) shadow = pageLayer.attachShadow({ mode: "open" });
   shadow.textContent = "";
@@ -193,7 +202,126 @@ function buildShadow(pageLayer, doc) {
     }
   }
 
+  wireShadowInteractions(shadow, pageLayer, getDoc, onSelect, onDrop, onAddNode, canvasRoot);
+
   return shadow;
+}
+
+/**
+ * Attaches hover, Alt+click picker, and drag/drop listeners to the page-root
+ * shadow root (rather than the canvas host) so they reliably receive events
+ * from inside the isolated page tree.
+ * @param {ShadowRoot} shadow - The shadow root of the page layer.
+ * @param {HTMLElement} pageLayer - The page-root host element.
+ * @param {function(): Object|null} getDoc - Returns the current page document (or null).
+ * @param {function(string): void} onSelect - Callback when a node is selected.
+ * @param {function(string, string, number): void} onDrop - Callback when a node is dropped.
+ * @param {function(string, number, string): void} onAddNode - Callback to add a new node.
+ * @returns {void}
+ */
+function wireShadowInteractions(shadow, pageLayer, getDoc, onSelect, onDrop, onAddNode, canvasRoot) {
+  // Hover tracking: only one highlight at a time
+  shadow.addEventListener("mouseover", (e) => {
+    const target = e.target;
+    const node =
+      target && target.closest ? target.closest(".canvas-page-node") : null;
+    shadow.querySelectorAll(".canvas-hovered").forEach((n) => {
+      if (n !== node) n.classList.remove("canvas-hovered");
+    });
+    if (node) node.classList.add("canvas-hovered");
+  });
+  shadow.addEventListener("mouseout", (e) => {
+    const related = e.relatedTarget;
+    if (!related || !shadow.contains(related)) {
+      shadow
+        .querySelectorAll(".canvas-hovered")
+        .forEach((n) => n.classList.remove("canvas-hovered"));
+    }
+  });
+
+  // Alt+click: element picker
+  shadow.addEventListener("click", (e) => {
+    if (!e.altKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    showElementPicker(canvasRoot, e, getDoc, onSelect);
+  });
+
+  // Hide transform frame during drag
+  shadow.addEventListener("dragstart", () => setFrameVisible(canvasRoot, false));
+  shadow.addEventListener("dragend", () => {
+    setFrameVisible(canvasRoot, true);
+    _isDragging = false;
+    pageLayer.classList.remove("drag-active");
+  });
+
+  // Drag/drop
+  shadow.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    const hasNode = e.dataTransfer.types.includes("application/x-scm-node");
+    e.dataTransfer.dropEffect = hasNode ? "move" : "copy";
+    highlightDropTarget(canvasRoot, e);
+  });
+  shadow.addEventListener("dragleave", (e) => {
+    if (!shadow.contains(e.relatedTarget)) {
+      clearDropHighlights(canvasRoot);
+    }
+  });
+  shadow.addEventListener("drop", (e) => {
+    e.preventDefault();
+    clearDropHighlights(canvasRoot);
+
+    const componentType = e.dataTransfer.getData("application/x-scm-component");
+    const nodeId = e.dataTransfer.getData("application/x-scm-node");
+    const doc = getDoc();
+    if (!doc || !doc.root) return;
+
+    const target = findDropTarget(canvasRoot, e);
+    if (!target) {
+      if (componentType) {
+        onAddNode(doc.root.id, doc.root.children.length, componentType);
+      }
+      return;
+    }
+
+    const { element: targetEl, position } = target;
+    const targetNodeId = targetEl.dataset.nodeId;
+    if (!targetNodeId) return;
+
+    if (componentType) {
+      const targetNode = pm.findNode(doc.root, targetNodeId);
+      if (!targetNode) return;
+      if (position === "inside" && targetNode.type === "box") {
+        onAddNode(targetNodeId, 0, componentType);
+      } else if (position === "before" || position === "after") {
+        const parent = pm.findParent(doc.root, targetNodeId);
+        if (parent && parent.children) {
+          const idx = parent.children.findIndex((c) => c.id === targetNodeId);
+          const at = position === "before" ? idx : idx + 1;
+          onAddNode(parent.id, at, componentType);
+        }
+      }
+    } else if (nodeId) {
+      const targetNode = pm.findNode(doc.root, targetNodeId);
+      if (!targetNode) return;
+      if (position === "inside" && targetNode.type === "box") {
+        onDrop(
+          nodeId,
+          targetNodeId,
+          targetNode.children ? targetNode.children.length : 0,
+        );
+      } else if (position === "before" || position === "after") {
+        const parent = pm.findParent(doc.root, targetNodeId);
+        if (parent && parent.children) {
+          const idx = parent.children.findIndex((c) => c.id === targetNodeId);
+          const at = position === "before" ? idx : idx + 1;
+          onDrop(nodeId, parent.id, at);
+        }
+      }
+    }
+
+    pageLayer.classList.remove("drag-active");
+  });
 }
 
 /** @type {string} Current project ID used for resolving image sources. */
@@ -294,7 +422,7 @@ export function renderCanvas(
       "data-role": "page-root",
     });
     renderNode(
-      buildShadow(pageLayer, doc),
+      buildShadow(pageLayer, doc, () => doc, onSelect, onDrop, onAddNode, root),
       doc.root,
       selectedNodeId,
       onSelect,
@@ -358,7 +486,7 @@ export function renderCanvas(
       "data-role": "page-root",
     });
     renderNode(
-      buildShadow(pageLayer, doc),
+      buildShadow(pageLayer, doc, () => doc, onSelect, onDrop, onAddNode, root),
       doc.root,
       selectedNodeId,
       onSelect,
@@ -385,128 +513,6 @@ export function updateSizeLabel(root) {
   const w = viewport.offsetWidth;
   const h = viewport.offsetHeight;
   sizeLabel.textContent = `${Math.round(w)} × ${Math.round(h)}`;
-}
-
-/**
- * Sets up root-level drag/drop, hover tracking, and Alt+click element picker listeners.
- * Call once per editor mount.
- * @param {HTMLElement} root - The canvas container element.
- * @param {function(): Object|null} getDoc - Returns the current page document (or null).
- * @param {function(string): void} onSelect - Callback when a node is selected.
- * @param {function(string, string, number): void} onDrop - Callback when a node is dropped (nodeId, targetParentId, index).
- * @param {function(string, number, string): void} onAddNode - Callback to add a new node (parentId, index, type).
- * @returns {void}
- */
-export function setupCanvasDragDrop(root, getDoc, onSelect, onDrop, onAddNode) {
-  // Hover tracking: only one label at a time
-  root.addEventListener("mouseover", (e) => {
-    const shadow = canvasPageShadow(root);
-    if (!shadow) return;
-    // Remove previous hover
-    shadow
-      .querySelectorAll(".canvas-hovered")
-      .forEach((n) => n.classList.remove("canvas-hovered"));
-    const node = e
-      .composedPath()
-      .find((n) => n.classList && n.classList.contains("canvas-page-node"));
-    if (node) node.classList.add("canvas-hovered");
-  });
-  root.addEventListener("mouseout", (e) => {
-    const shadow = canvasPageShadow(root);
-    if (!shadow) return;
-    const related = e.relatedTarget;
-    if (!related || !root.contains(related)) {
-      shadow
-        .querySelectorAll(".canvas-hovered")
-        .forEach((n) => n.classList.remove("canvas-hovered"));
-    }
-  });
-
-  // Alt+click: element picker
-  root.addEventListener("click", (e) => {
-    if (!e.altKey) return;
-    e.preventDefault();
-    e.stopPropagation();
-    showElementPicker(root, e, getDoc, onSelect);
-  });
-
-  // Hide transform frame during drag (root listener survives page-layer re-renders)
-  root.addEventListener("dragstart", () => setFrameVisible(root, false));
-  root.addEventListener("dragend", () => {
-    setFrameVisible(root, true);
-    _isDragging = false;
-    root.querySelector(".canvas-page-layer")?.classList.remove("drag-active");
-  });
-
-  // Drag/drop
-  root.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    const hasNode = e.dataTransfer.types.includes("application/x-scm-node");
-    e.dataTransfer.dropEffect = hasNode ? "move" : "copy";
-    highlightDropTarget(root, e);
-  });
-
-  root.addEventListener("dragleave", (e) => {
-    if (!root.contains(e.relatedTarget)) {
-      clearDropHighlights(root);
-    }
-  });
-
-  root.addEventListener("drop", (e) => {
-    e.preventDefault();
-    clearDropHighlights(root);
-
-    const componentType = e.dataTransfer.getData("application/x-scm-component");
-    const nodeId = e.dataTransfer.getData("application/x-scm-node");
-    const doc = getDoc();
-    if (!doc || !doc.root) return;
-
-    const target = findDropTarget(root, e);
-    if (!target) {
-      if (componentType) {
-        onAddNode(doc.root.id, doc.root.children.length, componentType);
-      }
-      return;
-    }
-
-    const { element: targetEl, position } = target;
-    const targetNodeId = targetEl.dataset.nodeId;
-    if (!targetNodeId) return;
-
-    if (componentType) {
-      const targetNode = pm.findNode(doc.root, targetNodeId);
-      if (!targetNode) return;
-
-      if (position === "inside" && targetNode.type === "box") {
-        onAddNode(targetNodeId, 0, componentType);
-      } else if (position === "before" || position === "after") {
-        const parent = pm.findParent(doc.root, targetNodeId);
-        if (parent && parent.children) {
-          const idx = parent.children.findIndex((c) => c.id === targetNodeId);
-          const at = position === "before" ? idx : idx + 1;
-          onAddNode(parent.id, at, componentType);
-        }
-      }
-    } else if (nodeId) {
-      const targetNode = pm.findNode(doc.root, targetNodeId);
-      if (!targetNode) return;
-
-      if (position === "inside" && targetNode.type === "box") {
-        onDrop(
-          nodeId,
-          targetNodeId,
-          targetNode.children ? targetNode.children.length : 0,
-        );
-      } else if (position === "before" || position === "after") {
-        const parent = pm.findParent(doc.root, targetNodeId);
-        if (parent && parent.children) {
-          const idx = parent.children.findIndex((c) => c.id === targetNodeId);
-          const at = position === "before" ? idx : idx + 1;
-          onDrop(nodeId, parent.id, at);
-        }
-      }
-    }
-  });
 }
 
 // ================== NODE RENDERING ==================
@@ -763,22 +769,20 @@ function showElementPicker(canvasRoot, mouseEvent, getDoc, onSelect) {
   closeElementPicker(canvasRoot);
 
   const pageLayer = canvasRoot.querySelector(".canvas-page-layer");
-  if (!pageLayer) return;
+  if (!pageLayer || !pageLayer.shadowRoot) return;
 
   const doc = getDoc();
   if (!doc) return;
 
-  // Get all elements at cursor
-  const allEls = document.elementsFromPoint(
-    mouseEvent.clientX,
-    mouseEvent.clientY,
-  );
+  // Collect page nodes under the cursor via the event's composed path
+  // (reliable through the shadow root, unlike elementsFromPoint which may
+  // return only the host element).
   const nodes = [];
   const seen = new Set();
 
-  for (const domEl of allEls) {
+  for (const domEl of mouseEvent.composedPath()) {
+    if (!domEl || !domEl.classList || !domEl.classList.contains("canvas-page-node")) continue;
     if (!domEl.dataset || !domEl.dataset.nodeId) continue;
-    if (!pageLayer.contains(domEl)) continue;
     if (seen.has(domEl.dataset.nodeId)) continue;
     seen.add(domEl.dataset.nodeId);
 
@@ -877,18 +881,19 @@ function closeElementPicker(canvasRoot) {
  */
 function findDropTarget(canvasRoot, dragEvent) {
   const pageLayer = canvasRoot.querySelector(".canvas-page-layer");
-  if (!pageLayer) return null;
+  if (!pageLayer || !pageLayer.shadowRoot) return null;
 
   const dragging = canvasPageShadow(canvasRoot)?.querySelector(".dragging");
-  const elements = document.elementsFromPoint(
-    dragEvent.clientX,
-    dragEvent.clientY,
-  );
+
+  // Use the event's composed path (reliable through the shadow root) instead of
+  // document.elementsFromPoint, which may return only the shadow host.
+  const elements = dragEvent.composedPath();
 
   for (const el of elements) {
+    if (!el || !el.classList || !el.classList.contains("canvas-page-node")) continue;
     if (dragging && (el === dragging || dragging.contains(el))) continue;
     if (!el.dataset || !el.dataset.nodeId) continue;
-    if (!pageLayer.contains(el)) continue;
+    if (!pageLayer.shadowRoot.contains(el)) continue;
 
     const rect = el.getBoundingClientRect();
     const relY = dragEvent.clientY - rect.top;

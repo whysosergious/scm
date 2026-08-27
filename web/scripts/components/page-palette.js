@@ -78,7 +78,7 @@ function createItem(comp, onAdd) {
     title: comp.desc,
     'data-component-type': comp.type,
   },
-    icon(comp.icon, 22),
+    el('div', { class: 'palette-icon' }, icon(comp.icon, 22)),
     el('span', { class: 'palette-label', text: comp.label }),
   );
 
@@ -118,8 +118,10 @@ export function renderPalette(root, onAdd) {
   for (const group of COMPONENT_GROUPS) {
     baseBody.append(el('div', { class: 'palette-group-title muted-note', text: group.title }));
 
+    const grid = el('div', { class: 'palette-grid' });
     for (const comp of group.items) {
-      baseBody.append(createItem(comp, onAdd));
+      grid.append(createItem(comp, onAdd));
     }
+    baseBody.append(grid);
   }
 }
