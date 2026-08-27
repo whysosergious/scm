@@ -40,6 +40,7 @@ function makeCollapsibleSection(sectionId, label, ...contentElements) {
   const summary = el('summary', { class: 'inspector-section-header' },
     icon('expand_more', 16),
     el('span', { text: label }),
+    el('span', { class: 'palette-section-rule' }),
   );
 
   const contentWrap = el('div', { class: 'section-content' });
@@ -387,7 +388,7 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
   }
 
   if (attrFieldRows.length > 0) {
-    root.append(el('div', { class: 'inspector-divider' }));
+  
     root.append(el('div', { class: 'inspector-section' },
       el('label', { text: elementName === 'a' ? 'Link' : 'Media' }),
     ));
@@ -469,7 +470,7 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
   renderStyles();
 
   const stylesSection = makeCollapsibleSection('styles', 'Styles', stylesContainer);
-  root.append(el('div', { class: 'inspector-divider' }));
+
   root.append(stylesSection);
 
   // ================== LAYOUT (collapsible) ==================
@@ -495,7 +496,7 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
   bmGroup.append(marSection);
 
   const layoutSection = makeCollapsibleSection('layout', 'Layout', bmGroup);
-  root.append(el('div', { class: 'inspector-divider' }));
+
   root.append(layoutSection);
 
   // ================== ATTRIBUTES (collapsible) ==================
@@ -555,11 +556,11 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
   renderAttrs();
 
   const attrsSection = makeCollapsibleSection('attributes', 'Attributes', attrsContainer);
-  root.append(el('div', { class: 'inspector-divider' }));
+
   root.append(attrsSection);
 
   // Reusable classes (assignment)
-  root.append(el('div', { class: 'inspector-divider' }));
+
   root.append(el('div', { class: 'inspector-section' },
     el('label', { text: 'Classes' }),
   ));
@@ -588,7 +589,7 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
   }
 
   // Class management (create / edit / delete)
-  root.append(el('div', { class: 'inspector-divider' }));
+
   root.append(el('div', { class: 'inspector-section' },
     el('label', { text: 'Manage Classes' }),
   ));
@@ -737,7 +738,7 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
 
   // Delete button
   if (node.id !== 'root') {
-    root.append(el('div', { class: 'inspector-divider' }));
+  
     const delBtn = el('button', {
       class: 'btn-secondary inspector-delete',
       onclick: () => {
@@ -747,7 +748,7 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
         }
       },
     }, icon('delete', 16), ' Delete');
-    root.append(delBtn);
+    root.append(el('div', { class: 'divider' }), delBtn);
   }
 }
 
@@ -944,7 +945,7 @@ export function renderHeadInspector(root, doc, headIndex, onChange, onRemove) {
   }
 
   // Delete button
-  root.append(el('div', { class: 'inspector-divider' }));
+
   const delBtn = el('button', {
     class: 'btn-secondary inspector-delete',
     onclick: () => {
@@ -953,7 +954,7 @@ export function renderHeadInspector(root, doc, headIndex, onChange, onRemove) {
       }
     },
   }, icon('delete', 16), ' Delete');
-  root.append(delBtn);
+  root.append(el('div', { class: 'divider' }), delBtn);
 }
 
 /**

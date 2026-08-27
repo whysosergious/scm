@@ -3,7 +3,7 @@
 // Supports keyboard navigation: arrow keys, Enter to select, Delete to remove.
 
 import { el } from '../dom.js';
-import { headElementLabel } from '../page-model.js';
+import { headElementLabel, BOX_ELEMENTS, TEXT_ELEMENTS } from '../page-model.js';
 
 /** @type {Record<string, string>} Badge text per head element type. */
 const HEAD_BADGES = {
@@ -16,12 +16,18 @@ const HEAD_BADGES = {
 /** @type {string[]} Head element type options for the add dropdown. */
 const HEAD_TYPES = ['stylesheet', 'style', 'meta', 'script'];
 
-/** @type {Record<string, string>} Badge text per body node type. */
-const NODE_BADGES = {
-  box: 'box',
-  text: 'text',
-  image: 'img',
-};
+/** @type {string} MIME-ish key used for tree drag-and-drop data transfer. */
+const TREE_DND_TYPE = 'application/x-scm-tree-node';
+
+/**
+ * Element choices for the top-level "+ Add" button, grouped by category.
+ * Each item yields a typeSpec understood by page-editor's onAddNode ("type:element").
+ */
+const ADD_GROUPS = [
+  { label: 'Box', items: BOX_ELEMENTS.map((e) => ({ type: 'box', element: e })) },
+  { label: 'Text', items: TEXT_ELEMENTS.map((e) => ({ type: 'text', element: e })) },
+  { label: 'Media', items: [{ type: 'image', element: 'img' }] },
+];
 
 /**
  * Check whether a node is an ancestor of (or equal to) `targetId` in the tree.
@@ -37,23 +43,6 @@ function isAncestorOf(node, targetId) {
     }
   }
   return false;
-}
-
-/**
- * Short preview of a node's content for the tree label.
- * @param {import('../page-model.js').PageNode} node
- * @returns {string}
- */
-function nodePreview(node) {
-  if (node.type === 'text') {
-    const val = node.props?.value || '';
-    const short = val.length > 30 ? val.slice(0, 30) + '…' : val;
-    return short || `&lt;${node.props?.element || 'p'}&gt;`;
-  }
-  if (node.type === 'image') {
-    return node.props?.alt || node.props?.src || 'img';
-  }
-  return node.props?.element || 'div';
 }
 
 /**
@@ -77,12 +66,47 @@ function getVisibleItems(root) {
 }
 
 /**
+ * Compute the drop position (before / after / inside) for a tree row based on
+ * the pointer's vertical position within the row.
+ * @param {HTMLElement} row - The target tree row element.
+ * @param {import('../page-model.js').PageNode} node - The node represented by the row.
+ * @param {number} clientY - Pointer Y coordinate (viewport space).
+ * @returns {'before'|'after'|'inside'}
+ */
+function computeDropPosition(row, node, clientY) {
+  const rect = row.getBoundingClientRect();
+  const y = clientY - rect.top;
+  const canInside = node.type === 'box';
+  const zone = rect.height * 0.25;
+  if (canInside && y > zone && y < rect.height - zone) return 'inside';
+  return y < rect.height / 2 ? 'before' : 'after';
+}
+
+/**
+ * Show a drop-position indicator on a tree row.
+ * @param {HTMLElement} row
+ * @param {'before'|'after'|'inside'} position
+ */
+function showDropIndicator(row, position) {
+  row.classList.remove('drop-before', 'drop-after', 'drop-inside');
+  row.classList.add('drop-' + position);
+}
+
+/**
+ * Remove any drop-position indicator from a tree row.
+ * @param {HTMLElement} row
+ */
+function clearDropIndicator(row) {
+  row.classList.remove('drop-before', 'drop-after', 'drop-inside');
+}
+
+/**
  * Render the DOM tree panel showing head elements and body node tree.
  * @param {HTMLElement} root - Container to render into.
  * @param {import('../page-model.js').PageDocument} doc - Page document.
  * @param {string|null} selectedNodeId - Currently selected body node ID, or null.
  * @param {number|null} selectedHeadIndex - Currently selected head element index, or null.
- * @param {Object} callbacks - { onSelectNode, onSelectHead, onAddHead, onRemoveHead, onRemoveNode }
+ * @param {Object} callbacks - { onSelectNode, onSelectHead, onAddHead, onRemoveHead, onRemoveNode, onAddToNode, onAddTop, onReorder }
  * @param {Set<string>} [collapsed] - Persistent collapsed node IDs (shared across renders).
  */
 export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbacks, collapsed) {
@@ -90,6 +114,39 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
 
   if (!collapsed) collapsed = new Set();
   let focusedIdx = -1; // index into visible items for keyboard nav
+
+  // ---- Top toolbar (add element at top of body) ----
+  const toolbar = el('div', { class: 'tree-toolbar' });
+  const topAddBtn = el('button', { class: 'tree-top-add', title: 'Add element at top' }, '+ Add');
+  const topDropdown = el('div', { class: 'tree-top-dropdown' });
+  topDropdown.style.display = 'none';
+
+  for (const group of ADD_GROUPS) {
+    topDropdown.append(el('div', { class: 'tree-top-group-label', text: group.label }));
+    for (const item of group.items) {
+      const label = `<${item.element}>`;
+      const opt = el('div', {
+        class: 'tree-top-option',
+        text: label,
+        onclick(e) {
+          e.stopPropagation();
+          topDropdown.style.display = 'none';
+          if (callbacks.onAddTop) callbacks.onAddTop(`${item.type}:${item.element}`);
+        },
+      });
+      topDropdown.append(opt);
+    }
+  }
+
+  topAddBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const visible = topDropdown.style.display !== 'none';
+    topDropdown.style.display = visible ? 'none' : 'block';
+  });
+  document.addEventListener('click', () => { topDropdown.style.display = 'none'; });
+
+  toolbar.append(topAddBtn, topDropdown);
+  root.append(toolbar);
 
   // ---- Head section ----
   const headSection = el('div', { class: 'page-tree-head' });
@@ -171,12 +228,14 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
   function renderNode(node, depth) {
     const hasChildren = node.children && node.children.length > 0;
     const isCollapsed = collapsed.has(node.id);
+    const isRoot = node.id === 'root';
 
     const row = el('div', {
-      class: 'tree-item' + (selectedNodeId === node.id ? ' selected' : ''),
+      class: 'tree-item' + (selectedNodeId === node.id ? ' selected' : '') + (isRoot ? ' tree-root' : ' tree-draggable'),
       'data-node-id': node.id,
-      style: { paddingLeft: `${depth * 16}px` },
+      style: { paddingLeft: `${4 + depth * 7}px` },
     });
+    if (!isRoot) row.setAttribute('draggable', 'true');
 
     // Chevron
     if (hasChildren) {
@@ -193,14 +252,28 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
       });
       row.append(chevron);
     } else {
-      row.append(el('span', { class: 'tree-chevron', text: '' }));
+      row.append(el('span', { class: 'tree-chevron tree-chevron--leaf', text: '' }));
     }
 
-    row.append(el('span', { class: 'tree-badge', text: NODE_BADGES[node.type] || '?' }));
-    row.append(el('span', { class: 'tree-label', html: nodePreview(node) }));
+    // Element tag (e.g. <main>), color-coded by node type
+    const element = (node.props && node.props.element) || node.type;
+    row.append(el('span', { class: `tree-el tree-el--${node.type}`, text: `<${element}>` }));
 
-    // Add child button (visible on hover, only for box nodes with children)
-    if (node.type === 'box' && node.id !== 'root') {
+    // Node id (muted, slightly darker)
+    row.append(el('span', { class: 'tree-id', text: node.id }));
+
+    // Optional content preview for leaf-ish nodes
+    let preview = '';
+    if (node.type === 'text') {
+      const val = (node.props && node.props.value) || '';
+      if (val) preview = val.length > 40 ? val.slice(0, 40) + '…' : val;
+    } else if (node.type === 'image') {
+      preview = (node.props && (node.props.alt || node.props.src)) || '';
+    }
+    if (preview) row.append(el('span', { class: 'tree-preview', text: preview }));
+
+    // Add child button (visible on hover, only for box nodes that are not root)
+    if (node.type === 'box' && !isRoot) {
       const addChildBtn = el('button', {
         class: 'tree-add-child',
         title: 'Add child',
@@ -212,7 +285,50 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
       row.append(addChildBtn);
     }
 
+    // Delete button (not for root)
+    if (!isRoot) {
+      const delBtn = el('button', {
+        class: 'tree-delete',
+        title: 'Remove',
+        onclick(e) {
+          e.stopPropagation();
+          if (callbacks.onRemoveNode) callbacks.onRemoveNode(node.id);
+        },
+      }, '×');
+      row.append(delBtn);
+    }
+
     row.addEventListener('click', () => callbacks.onSelectNode(node.id));
+
+    // Drag-and-drop reordering
+    if (!isRoot) {
+      row.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData(TREE_DND_TYPE, node.id);
+        e.dataTransfer.effectAllowed = 'move';
+        row.classList.add('dragging');
+      });
+      row.addEventListener('dragend', () => {
+        row.classList.remove('dragging');
+        clearDropIndicator(row);
+      });
+      row.addEventListener('dragover', (e) => {
+        if (!e.dataTransfer.types.includes(TREE_DND_TYPE)) return;
+        e.preventDefault();
+        showDropIndicator(row, computeDropPosition(row, node, e.clientY));
+      });
+      row.addEventListener('dragleave', (e) => {
+        if (!row.contains(e.relatedTarget)) clearDropIndicator(row);
+      });
+      row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        clearDropIndicator(row);
+        const draggedId = e.dataTransfer.getData(TREE_DND_TYPE);
+        if (!draggedId || draggedId === node.id) return;
+        const position = computeDropPosition(row, node, e.clientY);
+        if (callbacks.onReorder) callbacks.onReorder(draggedId, node.id, position);
+      });
+    }
+
     bodyList.append(row);
 
     if (hasChildren && !isCollapsed) {

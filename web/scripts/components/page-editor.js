@@ -551,6 +551,8 @@ function renderEditor(root, project) {
       onRemoveHead,
       onRemoveNode,
       onAddToNode,
+      onAddTop,
+      onReorder,
     }, treeCollapsed);
   }
 
@@ -685,6 +687,41 @@ function renderEditor(root, project) {
     const t = type.trim().toLowerCase();
     if (!['box', 'text', 'image'].includes(t)) { toast('Invalid type', 'error'); return; }
     onAddNode(parentId, undefined, t);
+  }
+
+  /** Add a new element at the top of the body (first child of root). */
+  function onAddTop(typeSpec) {
+    if (!doc) return;
+    onAddNode(doc.root.id, 0, typeSpec);
+  }
+
+  /** Reorder a node via drag-and-drop in the tree. */
+  function onReorder(draggedId, targetId, position) {
+    if (!doc || draggedId === targetId) return;
+    const target = pm.findNode(doc.root, targetId);
+    if (!target) return;
+
+    let targetParentId;
+    let index;
+    if (position === 'inside') {
+      targetParentId = targetId;
+      index = 0;
+    } else {
+      const parent = pm.findParent(doc.root, targetId);
+      if (!parent) return;
+      targetParentId = parent.id;
+      const idx = parent.children.indexOf(target);
+      index = position === 'before' ? idx : idx + 1;
+    }
+
+    const ok = pm.moveNode(doc.root, draggedId, targetParentId, index);
+    if (!ok) {
+      toast('Cannot move there (nesting or cycle rule)', 'error');
+      return;
+    }
+    markDirty(true);
+    renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+    refreshTree();
   }
 
   // Actions

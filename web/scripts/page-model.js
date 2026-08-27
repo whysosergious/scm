@@ -367,6 +367,10 @@ export function moveNode(root, nodeId, targetParentId, index) {
   // No-op if dropped into same position
   if (oldParent === targetParent && index === from) return false;
 
+  // Account for the slot the node currently occupies when reordering within
+  // the same parent: removing it first shifts later indices down by one.
+  if (oldParent === targetParent && from < index) index -= 1;
+
   oldParent.children.splice(from, 1);
   const at = Math.max(0, Math.min(index, targetParent.children.length));
   targetParent.children.splice(at, 0, node);

@@ -24,7 +24,7 @@ const COMPONENT_GROUPS = [
   {
     title: 'LAYOUT',
     items: [
-      { type: 'box', label: 'Box', icon: 'check_box_outline_blank', desc: 'Container for grouping children' },
+      { type: 'box', label: 'Container', icon: 'check_box_outline_blank', desc: 'Container for grouping children' },
       { type: 'box:nav', label: 'Nav', icon: 'menu', desc: 'Navigation container' },
     ],
   },
@@ -61,6 +61,7 @@ function createSection(root, title, defaultOpen = true) {
   const summary = el('summary', { class: 'palette-section-header' },
     icon('expand_more', 16),
     el('span', { text: title }),
+    el('span', { class: 'palette-section-rule' }),
   );
   const body = el('div', { class: 'palette-section-body' });
   details.append(summary, body);

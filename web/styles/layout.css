@@ -77,7 +77,6 @@
 .nav-item.active {
   color: var(--color-primary);
   background-color: rgba(37, 99, 235, 0.1);
-  border-left: 3px solid var(--color-primary);
 }
 
 .nav-item .material-symbols-outlined {
@@ -362,10 +361,10 @@
   align-items: center;
   gap: 8px;
   padding: 6px 12px 6px 16px;
-  margin: 2px 0 4px;
+  margin: 2px 0 8px;
   background: transparent;
   color: var(--color-on-surface-variant);
-  border: 1px dashed var(--color-outline-variant);
+  border: none;
   border-radius: var(--radius);
   cursor: pointer;
   font-family: var(--font-label);
@@ -424,7 +423,10 @@
 }
 /* Fly-out content must ignore the collapsed-sidebar label hiding. */
 .sidebar.collapsed .cat-flyout .nav-item span:not(.material-symbols-outlined),
-.sidebar.collapsed .cat-flyout .nav-file-add span:not(.material-symbols-outlined) {
+.sidebar.collapsed
+  .cat-flyout
+  .nav-file-add
+  span:not(.material-symbols-outlined) {
   display: inline;
 }
 .sidebar.collapsed .cat-flyout .nav-item,
