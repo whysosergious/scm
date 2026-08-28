@@ -40,7 +40,6 @@ export function openHtmlImportModal(onImported) {
     class: 'value-input',
     rows: '12',
     placeholder: 'Paste HTML here, or choose a file...',
-    style: { fontFamily: 'monospace', fontSize: '12px', width: '100%', boxSizing: 'border-box' },
   });
   textarea.addEventListener('input', () => { htmlContent = textarea.value; });
 
