@@ -2,13 +2,13 @@
 // over one document, sharing a single dirty/save flow. The backend stays
 // authoritative (spec §9).
 
-import { api } from '../api.js';
-import * as model from '../json-model.js';
-import { el } from '../dom.js';
-import { patch, refreshGitStatus, selectedProject, state } from '../state.js';
-import { createFormEditor } from './form-editor.js';
-import { triggerAddFile } from './content-list.js';
-import { toast, toastError } from './toast.js';
+import { api } from "../api.js";
+import * as model from "../json-model.js";
+import { el } from "../dom.js";
+import { patch, refreshGitStatus, selectedProject, state } from "../state.js";
+import { createFormEditor } from "./form-editor.js";
+import { triggerAddFile } from "./content-list.js";
+import { toast, toastError } from "./toast.js";
 
 /**
  * Renders the file editor into the given root element. Displays one of:
@@ -26,13 +26,13 @@ export function renderEditor(root) {
 
   // Checkout missing → offer to clone (spec §6).
   if (!project.checkout || !project.checkout.exists) {
-    const btn = el('button', { class: 'btn-primary' }, 'Clone now');
-    btn.addEventListener('click', async () => {
+    const btn = el("button", { class: "btn-primary" }, "Clone now");
+    btn.addEventListener("click", async () => {
       btn.disabled = true;
       try {
         await api.checkout(project.id);
         toast(`“${project.name}” cloned`);
-        const { refreshProjects } = await import('../state.js');
+        const { refreshProjects } = await import("../state.js");
         await refreshProjects();
       } catch (err) {
         toastError(err);
@@ -41,10 +41,12 @@ export function renderEditor(root) {
     });
     root.append(
       el(
-        'div',
-        { class: 'empty-state' },
-        el('h1', { text: 'Checkout not found' }),
-        el('p', { text: `The local copy of “${project.name}” has not been cloned into the projects directory yet.` }),
+        "div",
+        { class: "empty-state" },
+        el("h1", { text: "Checkout not found" }),
+        el("p", {
+          text: `The local copy of “${project.name}” has not been cloned into the projects directory yet.`,
+        }),
         btn,
       ),
     );
@@ -55,19 +57,24 @@ export function renderEditor(root) {
   if (!state.selectedFile) {
     if (state.files.length > 0) {
       root.append(
-        el('div', { class: 'header-section' },
-          el('h1', { text: project.name }),
-          el('p', { text: `Pick a JSON content file from ${project.content_dir}/ in the sidebar.` })),
+        el(
+          "div",
+          { class: "header-section" },
+          el("h1", { text: project.name }),
+          el("p", { text: `Pick something to edit.` }),
+        ),
       );
     } else {
-      const btn = el('button', { class: 'btn-primary' }, 'Create a JSON file');
-      btn.addEventListener('click', () => triggerAddFile());
+      const btn = el("button", { class: "btn-primary" }, "Create a JSON file");
+      btn.addEventListener("click", () => triggerAddFile());
       root.append(
         el(
-          'div',
-          { class: 'empty-state' },
-          el('h1', { text: 'No content yet' }),
-          el('p', { text: `${project.content_dir}/ contains no .json files. Create one to start editing.` }),
+          "div",
+          { class: "empty-state" },
+          el("h1", { text: "No content yet" }),
+          el("p", {
+            text: `${project.content_dir}/ contains no .json files. Create one to start editing.`,
+          }),
           btn,
         ),
       );
@@ -79,17 +86,19 @@ export function renderEditor(root) {
 }
 
 function renderNoProject(root) {
-  const btn = el('button', { class: 'btn-primary' }, 'Import a project');
-  btn.addEventListener('click', async () => {
-    const mod = await import('./import-modal.js');
+  const btn = el("button", { class: "btn-primary" }, "Import a project");
+  btn.addEventListener("click", async () => {
+    const mod = await import("./import-modal.js");
     mod.openImportModal();
   });
   root.append(
     el(
-      'div',
-      { class: 'empty-state' },
-      el('h1', { text: 'Welcome to SCM' }),
-      el('p', { text: 'No website projects are configured yet. Import a repository to manage its JSON content.' }),
+      "div",
+      { class: "empty-state" },
+      el("h1", { text: "Welcome to SCM" }),
+      el("p", {
+        text: "No website projects are configured yet. Import a repository to manage its JSON content.",
+      }),
       btn,
     ),
   );
@@ -98,35 +107,42 @@ function renderNoProject(root) {
 async function renderFileEditor(root, project) {
   const name = state.selectedFile;
 
-  let originalText = '';
-  let mode = 'form'; // 'form' | 'json'
+  let originalText = "";
+  let mode = "form"; // 'form' | 'json'
   let tree = null;
   let dirty = false;
 
-  const errLine = el('p', { class: 'editor-error', style: { display: 'none' } });
-  const saveBtn = el('button', { class: 'btn-save', disabled: true }, 'Save');
-  const cancelBtn = el('button', { class: 'btn-secondary', disabled: true }, 'Cancel');
+  const errLine = el("p", {
+    class: "editor-error",
+    style: { display: "none" },
+  });
+  const saveBtn = el("button", { class: "btn-save", disabled: true }, "Save");
+  const cancelBtn = el(
+    "button",
+    { class: "btn-secondary", disabled: true },
+    "Cancel",
+  );
 
-  const surface = el('div', { class: 'editor-surface' });
+  const surface = el("div", { class: "editor-surface" });
 
   // ---------- tabs ----------
   let formTab, jsonTab;
   function paintTabs() {
-    formTab.classList.toggle('active', mode === 'form');
-    jsonTab.classList.toggle('active', mode === 'json');
+    formTab.classList.toggle("active", mode === "form");
+    jsonTab.classList.toggle("active", mode === "json");
   }
-  formTab = el('button', { class: 'tab-btn active', text: 'Form' });
-  jsonTab = el('button', { class: 'tab-btn', text: 'JSON' });
-  formTab.addEventListener('click', () => setMode('form'));
-  jsonTab.addEventListener('click', () => setMode('json'));
+  formTab = el("button", { class: "tab-btn active", text: "Form" });
+  jsonTab = el("button", { class: "tab-btn", text: "JSON" });
+  formTab.addEventListener("click", () => setMode("form"));
+  jsonTab.addEventListener("click", () => setMode("json"));
 
   // ---------- plain-text editor ----------
-  const textarea = el('textarea', {
-    class: 'json-editor',
-    spellcheck: 'false',
-    placeholder: 'Loading…',
+  const textarea = el("textarea", {
+    class: "json-editor",
+    spellcheck: "false",
+    placeholder: "Loading…",
   });
-  textarea.addEventListener('input', () => {
+  textarea.addEventListener("input", () => {
     validateJsonText();
     markDirty(textarea.value !== originalText);
   });
@@ -145,10 +161,10 @@ async function renderFileEditor(root, project) {
 
   function showErr(msg) {
     errLine.textContent = msg;
-    errLine.style.display = 'block';
+    errLine.style.display = "block";
   }
   function hideErr() {
-    errLine.style.display = 'none';
+    errLine.style.display = "none";
   }
 
   function markDirty(v) {
@@ -157,7 +173,7 @@ async function renderFileEditor(root, project) {
   }
 
   function syncButtons() {
-    saveBtn.disabled = !dirty || (mode === 'json' && !validateQuiet());
+    saveBtn.disabled = !dirty || (mode === "json" && !validateQuiet());
     cancelBtn.disabled = !dirty;
   }
 
@@ -171,23 +187,26 @@ async function renderFileEditor(root, project) {
   }
 
   // ---------- actions ----------
-  cancelBtn.addEventListener('click', () => {
+  cancelBtn.addEventListener("click", () => {
     textarea.value = originalText;
     reloadTreeFromOriginal();
-    if (mode === 'form') renderForm();
+    if (mode === "form") renderForm();
     else renderJson();
     markDirty(false);
     hideErr();
   });
 
-  saveBtn.addEventListener('click', async () => {
+  saveBtn.addEventListener("click", async () => {
     let textOut;
-    if (mode === 'form') {
+    if (mode === "form") {
       if (!tree) return;
       textOut = model.serialize(tree);
     } else {
       if (!validateJsonText()) {
-        toastError({ message: 'Invalid JSON — not saved', category: 'invalid-json' });
+        toastError({
+          message: "Invalid JSON — not saved",
+          category: "invalid-json",
+        });
         return;
       }
       textOut = textarea.value;
@@ -197,7 +216,7 @@ async function renderFileEditor(root, project) {
     try {
       await api.saveFile(project.id, name, textOut);
       originalText = textOut;
-      if (mode === 'json') reloadTreeFromOriginal();
+      if (mode === "json") reloadTreeFromOriginal();
       markDirty(false);
       hideErr();
       toast(`Saved ${name}`);
@@ -222,7 +241,7 @@ async function renderFileEditor(root, project) {
   // ---------- mode switching ----------
   function setMode(m) {
     if (m === mode) return;
-    if (m === 'form') {
+    if (m === "form") {
       // Gated: JSON text must parse before we can render forms.
       try {
         tree = model.parse(textarea.value);
@@ -231,12 +250,12 @@ async function renderFileEditor(root, project) {
         return;
       }
       hideErr();
-      mode = 'form';
+      mode = "form";
     } else {
-      if (mode === 'form' && tree) {
+      if (mode === "form" && tree) {
         textarea.value = model.serialize(tree); // live sync Form → JSON
       }
-      mode = 'json';
+      mode = "json";
     }
     paintTabs();
     renderSurface();
@@ -244,8 +263,8 @@ async function renderFileEditor(root, project) {
   }
 
   function renderSurface() {
-    surface.textContent = '';
-    if (mode === 'form' && tree) {
+    surface.textContent = "";
+    if (mode === "form" && tree) {
       renderForm();
     } else {
       renderJson();
@@ -267,18 +286,21 @@ async function renderFileEditor(root, project) {
 
   // ---------- layout ----------
   root.append(
-    el('div', { class: 'header-section' },
-      el('h1', { class: 'mono-title', text: name }),
-      el('p', { text: `${project.name} · ${project.content_dir}/${name}` })),
-    el('div', { class: 'editor-tabs' }, formTab, jsonTab),
+    el(
+      "div",
+      { class: "header-section" },
+      el("h1", { class: "mono-title", text: name }),
+      el("p", { text: `${project.name} · ${project.content_dir}/${name}` }),
+    ),
+    el("div", { class: "editor-tabs" }, formTab, jsonTab),
     surface,
     errLine,
-    el('div', { class: 'action-bar' }, cancelBtn, saveBtn),
+    el("div", { class: "action-bar" }, cancelBtn, saveBtn),
   );
 
   // ---------- load ----------
-  textarea.value = '';
-  textarea.placeholder = 'Loading…';
+  textarea.value = "";
+  textarea.placeholder = "Loading…";
   renderJson(); // placeholder surface until loaded
 
   try {
@@ -287,20 +309,20 @@ async function renderFileEditor(root, project) {
     if (state.selectedFile !== name) return;
     originalText = data.text;
     textarea.value = originalText;
-    textarea.placeholder = '';
+    textarea.placeholder = "";
     reloadTreeFromOriginal();
 
     if (tree) {
-      mode = 'form';
+      mode = "form";
     } else {
-      mode = 'json';
-      showErr('✕ This file is not valid JSON — edit it as text.');
+      mode = "json";
+      showErr("✕ This file is not valid JSON — edit it as text.");
     }
     paintTabs();
     renderSurface();
     syncButtons();
   } catch (err) {
-    textarea.placeholder = '';
+    textarea.placeholder = "";
     toastError(err);
   }
 }

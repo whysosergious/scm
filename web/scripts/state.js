@@ -6,6 +6,9 @@ import { api } from './api.js';
 /** @type {string} localStorage key used to persist the selected project id. */
 const STORAGE_KEY = 'scm:selected-project-id';
 
+/** @type {string} localStorage key used to persist the last open page name. */
+const PAGE_STORAGE_KEY = 'scm:selected-page';
+
 /**
  * Global reactive state object. Mutations go through {@link patch} so
  * subscribers are notified automatically.
@@ -119,6 +122,7 @@ export function setSelection(id) {
   if (id === state.selectedId) return;
   if (!confirmIfDirty()) return;
   localStorage.setItem(STORAGE_KEY, id);
+  localStorage.removeItem(PAGE_STORAGE_KEY);
   patch({
     selectedId: id,
     selectedFile: null,
@@ -202,6 +206,7 @@ export function setPageSelection(name) {
   // Already open on this page in the page editor: no-op.
   if (name === state.selectedPage && state.view === 'page-editor') return;
   if (!confirmIfDirty()) return;
+  localStorage.setItem(PAGE_STORAGE_KEY, name);
   patch({ selectedPage: name, view: 'page-editor', selectedFile: null, pageDirty: false });
 }
 

@@ -1,7 +1,7 @@
 // App bootstrap: sidebar toggle, store subscription → view rendering.
 
 import { api } from './api.js';
-import { applySelectionRules, patch, refreshGitStatus, refreshFiles, refreshPages, refreshProjects, selectedProject, state, subscribe } from './state.js';
+import { applySelectionRules, patch, refreshGitStatus, refreshFiles, refreshPages, refreshProjects, selectedProject, setPageSelection, state, subscribe } from './state.js';
 import { renderContentNav } from './components/content-list.js';
 import { renderPagesNav } from './components/pages-list.js';
 import { renderConfigEditor } from './components/config-editor.js';
@@ -115,6 +115,10 @@ subscribe(render);
  */
 (async function boot() {
   try {
+    // Capture the saved page before project setup can clear it (setSelection
+    // removes PAGE_STORAGE_KEY, so we must preserve the value here).
+    const savedPage = localStorage.getItem('scm:selected-page');
+
     await refreshProjects();
     applySelectionRules();
 
@@ -132,6 +136,12 @@ subscribe(render);
     }
 
     await Promise.all([refreshFiles().catch(() => {}), refreshPages().catch(() => {}), refreshGitStatus().catch(() => {})]);
+
+    // Restore the last open page if it still exists in the project.
+    // Use the captured value — localStorage may have been cleared by setSelection.
+    if (savedPage && state.pages.includes(savedPage) && !state.selectedPage) {
+      setPageSelection(savedPage);
+    }
   } catch (err) {
     toastError(err);
   } finally {
