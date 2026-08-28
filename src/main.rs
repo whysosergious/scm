@@ -14,7 +14,6 @@ mod git;
 mod http;
 mod pages;
 mod pages_gen;
-mod pages_import;
 mod paths;
 mod project;
 mod setup;

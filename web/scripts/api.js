@@ -95,8 +95,7 @@ const json = (v) => JSON.stringify(v);
  *   createPage: (id: string, name: string, initial: string) => Promise<Object>,
  *   deletePage: (id: string, name: string) => Promise<Object>,
  *   generatePage: (id: string, name: string) => Promise<Object>,
- *   previewPageUrl: (id: string, name: string) => string,
- *   importPage: (id: string, html: string) => Promise<Object>
+ *   previewPageUrl: (id: string, name: string) => string
  * }}
  */
 export const api = {
@@ -255,11 +254,4 @@ export const api = {
    */
   previewPageUrl: (id, name) =>
     `/api/projects/${encodeURIComponent(id)}/pages/${encodeURIComponent(name)}/preview`,
-  /**
-   * @param {string} id - Project id.
-   * @param {string} html - HTML content to import as a new page.
-   * @returns {Promise<Object>}
-   */
-  importPage: (id, html) =>
-    request('POST', `/api/projects/${encodeURIComponent(id)}/pages/import`, json({ html })),
 };

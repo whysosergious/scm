@@ -402,35 +402,6 @@ pub async fn preview_page(
         .body(html))
 }
 
-/// Import an HTML file into a page JSON document.
-#[post("/projects/{id}/pages/import")]
-pub async fn import_page(
-    state: Ctx,
-    path: web::Path<String>,
-    body: web::Bytes,
-) -> ScmResult<HttpResponse> {
-    let p = get_project(&state, path.into_inner())?;
-    let parsed = json_body(&body)?;
-    let html = parsed
-        .get("html")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ScmError::config("Import payload must contain { html }"))?;
-
-    let dest = project::checkout_path(&state.projects_root(), &p.id)?;
-    let result = crate::pages_import::import_html(html)?;
-
-    // Save the imported page
-    let page_name = result
-        .get("saved_as")
-        .and_then(|v| v.as_str())
-        .unwrap_or("imported.json");
-    let _page_json = serde_json::to_string_pretty(&result["page"])
-        .map_err(|e| ScmError::internal("Failed to serialize imported page").with_detail(e.to_string()))?;
-    pages::create_page(&dest, page_name, Some(&result["page"])).await?;
-
-    Ok(HttpResponse::Ok().json(result))
-}
-
 // ================== MEDIA ==================
 
 #[derive(Deserialize)]

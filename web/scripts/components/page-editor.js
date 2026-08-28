@@ -152,11 +152,6 @@ function renderEditor(root, project) {
   const saveBtn = el('button', { class: 'menu-item menu-item-primary', disabled: true }, icon('save', 18), el('span', { text: 'Save' }));
   const generateBtn = el('button', { class: 'menu-item' }, icon('code', 18), el('span', { text: 'Generate' }));
   const previewBtn = el('button', { class: 'menu-item' }, icon('open_in_new', 18), el('span', { text: 'Preview' }));
-  const importHtmlBtn = el('button', { class: 'menu-item' }, icon('upload', 18), el('span', { text: 'Import HTML' }));
-  importHtmlBtn.addEventListener('click', async () => {
-    const mod = await import('./page-import-modal.js');
-    mod.openHtmlImportModal();
-  });
   const dirtyIndicator = el('span', { class: 'muted-note', text: '', style: { display: 'none' } });
 
   // Persisted menu settings
@@ -205,7 +200,6 @@ function renderEditor(root, project) {
     saveBtn,
     previewBtn,
     generateBtn,
-    importHtmlBtn,
     el('div', { class: 'menu-divider' }),
     el('div', { class: 'menu-section-title', text: 'VIEW' }),
     emptyToggle,

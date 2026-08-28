@@ -37,7 +37,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .service(api::delete_page)
                 .service(api::generate_page)
                 .service(api::preview_page)
-                .service(api::import_page)
                 .service(api::git_status)
                 .service(api::list_media)
                 .service(api::serve_media)
