@@ -6,42 +6,47 @@ import { el, icon } from '../dom.js';
 import { selectedProject, setPageSelection } from '../state.js';
 import { toast, toastError } from './toast.js';
 
+// Lazy-load the CodeMirror bundle (same pattern as rich-editor).
+let bundleLoaded = false;
+async function ensureBundle() {
+  if (bundleLoaded) return;
+  await import('../vendor/code-editor.bundle.js');
+  bundleLoaded = true;
+}
+
 /**
  * Open the HTML import modal dialog.
  * @param {function(): void} [onImported] - Callback after successful import.
  * @returns {void}
  */
-export function openHtmlImportModal(onImported) {
+export async function openHtmlImportModal(onImported) {
   const root = document.getElementById('modal-root');
   root.textContent = '';
 
   const project = selectedProject();
   if (!project) { toast('No project selected', 'error'); return; }
 
+  // Show a loading placeholder while the bundle loads
+  const loadingEl = el('p', { class: 'muted-note', text: 'Loading editor…' });
+
   const errBox = el('div', { class: 'modal-error', style: { display: 'none' } });
   const warnBox = el('div', { class: 'modal-warnings', style: { display: 'none', maxHeight: '120px', overflow: 'auto', fontSize: '11px', padding: '8px', background: 'rgba(251,191,36,0.1)', borderRadius: '4px', marginTop: '8px' } });
   const submitBtn = el('button', { class: 'btn-save', type: 'submit' }, icon('upload', 16), ' Import');
   const fileInput = el('input', { type: 'file', accept: '.html,.htm', style: { display: 'none' } });
-  let htmlContent = '';
 
-  fileInput.addEventListener('change', () => {
+  let htmlContent = '';
+  let editorEl = null;
+
+  fileInput.addEventListener('change', async () => {
     const file = fileInput.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       htmlContent = reader.result;
-      textarea.value = htmlContent;
-      textarea.placeholder = '';
+      if (editorEl) editorEl.value = htmlContent;
     };
     reader.readAsText(file);
   });
-
-  const textarea = el('textarea', {
-    class: 'value-input',
-    rows: '12',
-    placeholder: 'Paste HTML here, or choose a file...',
-  });
-  textarea.addEventListener('input', () => { htmlContent = textarea.value; });
 
   const chooseFileBtn = el('button', {
     class: 'btn-secondary',
@@ -54,9 +59,10 @@ export function openHtmlImportModal(onImported) {
     'form',
     {
       class: 'modal-form',
+      style: { maxHeight: '85vh' },
       onsubmit: async (e) => {
         e.preventDefault();
-        const html = htmlContent.trim();
+        const html = (editorEl ? editorEl.value : htmlContent).trim();
         if (!html) { toast('No HTML content', 'error'); return; }
         errBox.style.display = 'none';
         warnBox.style.display = 'none';
@@ -101,7 +107,7 @@ export function openHtmlImportModal(onImported) {
     warnBox,
     fileInput,
     chooseFileBtn,
-    textarea,
+    loadingEl,
     el(
       'div',
       { class: 'action-bar' },
@@ -119,5 +125,26 @@ export function openHtmlImportModal(onImported) {
     if (e.target === overlay) overlay.remove();
   });
   root.append(overlay);
-  textarea.focus();
+
+  // Lazy-load bundle, then replace loading placeholder with <code-editor>
+  try {
+    await ensureBundle();
+    editorEl = document.createElement('code-editor');
+    editorEl.setAttribute('language', 'html');
+    editorEl.style.cssText = 'display:block;width:100%;height:350px;';
+    loadingEl.replaceWith(editorEl);
+    editorEl.focus();
+  } catch (err) {
+    console.error('Failed to load code editor bundle:', err);
+    // Fallback: use a plain textarea
+    const fallback = el('textarea', {
+      class: 'value-input',
+      rows: '12',
+      placeholder: 'Paste HTML here, or choose a file...',
+    });
+    fallback.addEventListener('input', () => { htmlContent = fallback.value; });
+    editorEl = null;
+    loadingEl.replaceWith(fallback);
+    fallback.focus();
+  }
 }

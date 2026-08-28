@@ -1,73 +1,251 @@
-# Page Editor TODO
+# TODO — CodeMirror 6 Integration
 
-All items from the original plan have been implemented.
-
----
-
-## Completed
-
-### P0: Unsaved-changes guards ✓
-
-- `beforeunload` handler warns on tab close/refresh when dirty
-- Page switch in sidebar prompts save/discard/cancel
-- Project switch prompts save/discard/cancel
-- Dirty state tracked globally via `state.pageDirty`
-
-### P1: Reusable class management UI ✓
-
-- Create class with name (auto-generated default)
-- Rename class (updates all node references)
-- Edit class styles (full CSS property picker, same as node styles)
-- Edit class label and description
-- Delete class (removes from nodes that use it)
-- Assign/remove class from node (checkboxes in inspector)
-
-### P2: HTML import UI ✓
-
-- "Import HTML" button in the page editor toolbar
-- Modal with textarea for pasting HTML or file picker
-- Calls existing `api.importPage()` backend
-- Shows warnings from the import process
-- Auto-opens the imported page on success
-
-### P3: DOM tree keyboard navigation ✓
-
-- Arrow Up/Down: move focus between visible tree items
-- Arrow Right: expand collapsed node or move to first child
-- Arrow Left: collapse expanded node or move to parent
-- Enter: select focused node/head element
-- Delete/Backspace: remove focused node (with confirm)
-- Visual focus indicator (outline, separate from selection highlight)
-- Persistent collapsed state across re-renders
-
-### P5: Non-drag add controls ✓
-
-- "+" button on tree nodes (visible on hover) for adding children
-
-### Canvas UX improvements ✓
-
-- BM buttons (d/p/m) always on element right edge, uppercase monospace
-- BM panels moved from canvas overlay to inspector (under Styles)
-- Escape key exits active BM mode or deselects node
-- Click on canvas background deselects node
-- Transform control frame with 8 handles around element when BM mode active
+## Goal
+Bundle CodeMirror 6 as a self-contained vendor JS file (same pattern as ProseMirror/rich-editor), expose a `<code-editor>` custom element with full language/theme/plugin support, and wire it into the HTML import modal.
 
 ---
 
-## In progress
+## Phase 1: Project Scaffolding
 
-### Canvas UX remaining
+### 1.1 Create `web/codemirror-src/`
+```
+web/codemirror-src/
+  package.json
+  vite.config.js
+  src/
+    main.js          # single entry point (custom element + registry)
+```
 
-- P7: Drop zones visible only during dragging, proximity-based (non-text only)
+### 1.2 `package.json` — dependencies
+
+**Core:**
+- `codemirror` — basicSetup bundle
+- `@codemirror/state`
+- `@codemirror/view`
+- `@codemirror/commands`
+- `@codemirror/search`
+- `@codemirror/autocomplete`
+- `@codemirror/language`
+- `@codemirror/lint`
+
+**Language support (official — all):**
+- `@codemirror/lang-javascript`
+- `@codemirror/lang-html`
+- `@codemirror/lang-css`
+- `@codemirror/lang-json`
+- `@codemirror/lang-xml`
+- `@codemirror/lang-markdown`
+- `@codemirror/lang-python`
+- `@codemirror/lang-rust`
+- `@codemirror/lang-cpp`
+- `@codemirror/lang-java`
+- `@codemirror/lang-php`
+- `@codemirror/lang-sql`
+- `@codemirror/lang-swift`
+- `@codemirror/lang-kotlin`
+- `@codemirror/lang-angular`
+- `@codemirror/lang-vue`
+- `@codemirror/lang-liquid`
+- `@codemirror/lang-sass`
+- `@codemirror/lang-less`
+- `@codemirror/lang-wast`
+- `@codemirror/lang-gherkin`
+
+**Themes:**
+- `@codemirror/theme-one-dark` — One Dark
+- `@ddietr/codemirror-themes` — bulk collection: material (light/dark), solarized (light/dark), dracula, github (light/dark), aura, tokyo night / storm / day
+
+**Community extensions:**
+- `@emmetio/codemirror6-plugin` — Emmet abbreviation expansion
+- `@replit/codemirror-vim` — Vim keybindings
+- `@replit/codemirror-emacs` — Emacs keybindings
+- `@replit/codemirror-vscode-keymap` — VS Code keybindings
+- `@replit/codemirror-indentation-markers` — indentation guides
+
+**Dev:**
+- `vite` — bundler (same as prosemirror setup)
+
+### 1.3 `vite.config.js`
+Same pattern as `web/editor-src/vite.config.js`:
+- Library mode, entry `src/main.js`
+- ES module format
+- Output to `../scripts/vendor/`
+- Filename: `code-editor.bundle.js`
+- `minify: false`, `emptyOutDir: false`, `manualChunks: undefined`
 
 ---
 
-## Removed (out of scope)
+## Phase 2: `<code-editor>` Custom Element (`src/main.js`)
 
-### P4: html5ever parser upgrade
+### 2.1 Architecture
+Single file, same pattern as `web/editor-src/src/main.js`. Registers `<code-editor>` custom element.
 
-Deferred — current byte-level parser handles well-formed HTML. Can be revisited later.
+**Attributes / properties:**
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `value` | string | `''` | Document content |
+| `language` | string | `'html'` | Language mode key |
+| `theme` | string | `'tokyo-night'` | Theme key |
+| `tab-size` | number | `2` | Tab width |
+| `line-numbers` | boolean | `true` | Show line numbers |
+| `word-wrap` | boolean | `false` | Line wrapping |
+| `font-size` | number | `14` | Font size in px |
 
-### P6: Responsive styles
+**Events:**
+- `input` — fired on content change (same as ProseMirror `<rich-text-editor>`)
+- `settingschange` — fired when theme/language/options change
 
-Deferred — explicitly out of scope for v1 per spec §15.
+**API:**
+- `el.value` getter/setter — serialize/deserialize editor content
+- `el.setLanguage(lang)` — switch language at runtime
+- `el.setTheme(theme)` — switch theme at runtime
+
+### 2.2 Internal structure
+```
+┌─────────────────────────────────┐
+│  [Theme ▾] [Lang ▾] [⚙ Options]│  ← toolbar row
+├─────────────────────────────────┤
+│                                 │
+│  CodeMirror EditorView          │
+│                                 │
+└─────────────────────────────────┘
+```
+
+### 2.3 Theme registry
+Object mapping theme keys → CodeMirror `Extension`:
+```js
+const THEMES = {
+  'tokyo-night':      tokyNight,       // @ddietr — DEFAULT
+  'tokyo-night-storm': tokyNightStorm,
+  'tokyo-night-day':  tokyNightDay,
+  'one-dark':         oneDark,         // @codemirror/theme-one-dark
+  'dracula':          dracula,
+  'github-dark':      githubDark,
+  'github-light':     githubLight,
+  'material-dark':    materialDark,
+  'material-light':   materialLight,
+  'material-ocean':   materialOcean,   // (if available in @ddietr)
+  'solarized-dark':   solarizedDark,
+  'solarized-light':  solarizedLight,
+  'aura':             aura,
+  'monokai':          monokai,         // custom or @fsegurai
+  'nord':             nord,
+  // ... all themes from packages
+  'custom':           buildCustomTheme, // function from user color picks
+};
+```
+
+### 2.4 Language registry
+Object mapping language keys → factory functions:
+```js
+const LANGUAGES = {
+  'html':     () => html(),
+  'css':      () => css(),
+  'javascript': () => javascript(),
+  'json':     () => json(),
+  'xml':      () => xml(),
+  'markdown': () => markdown(),
+  'python':   () => python(),
+  'rust':     () => rust(),
+  'cpp':      () => cpp(),
+  'java':     () => java(),
+  'php':      () => php(),
+  'sql':      () => sql(),
+  'swift':    () => swift(),
+  'kotlin':   () => kotlin(),
+  'angular':  () => angular(),
+  'vue':      () => vue(),
+  'liquid':   () => liquid(),
+  'sass':     () => sass(),
+  'less':     () => less(),
+  'wast':     () => wast(),
+  'gherkin':  () => gherkin(),
+  'plaintext': () => [], // no language support
+};
+```
+
+### 2.5 Options panel
+A floating popover panel (toggled by ⚙ button in toolbar):
+
+**Controls:**
+| Control | Type | Persisted |
+|---------|------|-----------|
+| Theme | dropdown | localStorage |
+| Language | dropdown | — (per-use) |
+| Keybindings | dropdown (Default/Vim/Emacs/VS Code) | localStorage |
+| Font size | number input or slider (10–24px) | localStorage |
+| Tab size | dropdown (2/4/8) | localStorage |
+| Line numbers | checkbox | localStorage |
+| Word wrap | checkbox | localStorage |
+| Emmet | checkbox (on/off) | localStorage |
+| Indentation markers | checkbox | localStorage |
+
+**Custom theme section** (at bottom of panel):
+- 8 color pickers: background, foreground, cursor, selection, gutter-bg, gutter-fg, keyword, string
+- Live preview — changes apply immediately
+- "Save as custom" button → persists to localStorage as `scm:cm-custom-theme`
+- "Reset" button → clears custom theme
+
+### 2.6 Persistence
+localStorage keys:
+- `scm:cm-theme` — selected theme key
+- `scm:cm-language` — selected language key (optional)
+- `scm:cm-keybindings` — selected keybinding set
+- `scm:cm-font-size` — font size
+- `scm:cm-tab-size` — tab size
+- `scm:cm-line-numbers` — boolean
+- `scm:cm-word-wrap` — boolean
+- `scm:cm-emmet` — boolean
+- `scm:cm-indent-markers` — boolean
+- `scm:cm-custom-theme` — JSON of custom color picks
+
+---
+
+## Phase 3: Build
+
+```bash
+cd web/codemirror-src && npm install && npm run build
+```
+
+Output: `web/scripts/vendor/code-editor.bundle.js`
+
+---
+
+## Phase 4: Integration
+
+### 4.1 HTML import modal (`web/scripts/components/page-import-modal.js`)
+Replace the `<textarea class="value-input">` with:
+```js
+const editor = el('code-editor', {
+  language: 'html',
+  'tab-size': 2,
+  style: { height: '300px', width: '100%' },
+});
+```
+- On file load: `editor.value = htmlContent;`
+- On submit: `const html = editor.value.trim();`
+- Lazy-load the bundle (same pattern as rich-editor): `await import('../vendor/code-editor.bundle.js');`
+
+### 4.2 Inspector `<style>` textarea
+Optionally replace the CSS textarea in the inspector with `<code-editor language="css">` — but this can be Phase 5.
+
+---
+
+## Phase 5: Verification
+- `node --check web/scripts/main.js` (no syntax errors)
+- `cd web/codemirror-src && npm run build` succeeds
+- `<code-editor>` renders in the import modal
+- Theme switching works
+- Language switching works
+- Options persist across reload
+- Custom theme builder works
+- Content round-trips correctly via `.value`
+
+---
+
+## Notes
+- Bundle will be larger than the ProseMirror one (~20+ language grammars). This is expected and acceptable — it's lazy-loaded only when the import modal opens.
+- Tokyo Night is default theme. Theme selection persists.
+- The options panel is self-contained within the custom element — no external UI dependencies.
+- The `@ddietr/codemirror-themes` package provides the bulk of themes from a single dependency.
+- Custom theme builder uses `EditorView.theme()` + `syntaxHighlighting(HighlightStyle.define())` at runtime.

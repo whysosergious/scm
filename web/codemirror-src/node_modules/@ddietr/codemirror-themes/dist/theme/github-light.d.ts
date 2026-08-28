@@ -1,0 +1,34 @@
+import { Extension } from '@codemirror/state';
+import { HighlightStyle } from '@codemirror/language';
+export declare const config: {
+    name: string;
+    dark: boolean;
+    background: string;
+    foreground: string;
+    selection: string;
+    cursor: string;
+    dropdownBackground: string;
+    dropdownBorder: string;
+    activeLine: string;
+    lineNumber: string;
+    lineNumberActive: string;
+    matchingBracket: string;
+    keyword: string;
+    storage: string;
+    variable: string;
+    parameter: string;
+    function: string;
+    string: string;
+    constant: string;
+    type: string;
+    class: string;
+    number: string;
+    comment: string;
+    heading: string;
+    invalid: string;
+    regexp: string;
+};
+export declare const githubLightTheme: Extension;
+export declare const githubLightHighlightStyle: HighlightStyle;
+export declare const githubLight: Extension;
+//# sourceMappingURL=github-light.d.ts.map
