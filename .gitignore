@@ -3,3 +3,4 @@
 *.lock
 /projects/*
 web/editor-src/node_modules/
+web/codemirror-src/node_modules/
