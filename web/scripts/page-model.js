@@ -46,10 +46,25 @@ let nextId = 1;
 export const NODE_TYPES = ['box', 'text', 'image'];
 
 /** @type {string[]} HTML elements allowed for box nodes. */
-export const BOX_ELEMENTS = ['div', 'section', 'header', 'main', 'footer', 'article', 'aside', 'nav', 'ul', 'ol', 'video', 'audio', 'br'];
+export const BOX_ELEMENTS = [
+  'div', 'section', 'main', 'header', 'footer', 'article', 'aside', 'nav',
+  'hgroup', 'search',
+  'blockquote', 'dd', 'dl', 'dt', 'figcaption', 'figure', 'hr', 'li', 'menu', 'ol', 'pre', 'ul',
+  'table', 'caption', 'colgroup', 'col', 'tbody', 'tfoot', 'thead', 'tr', 'td', 'th',
+  'form', 'fieldset', 'datalist', 'optgroup', 'option',
+  'details', 'dialog', 'summary',
+  'noscript', 'template', 'slot',
+  'video', 'audio', 'br', 'wbr',
+  'address',
+];
 
-/** @type {string[]} HTML elements allowed for text nodes. */
-export const TEXT_ELEMENTS = ['p', 'h1', 'h2', 'h3', 'span', 'blockquote', 'a', 'button', 'li'];
+/** @type {string[]} HTML elements allowed for text (inline) nodes. */
+export const TEXT_ELEMENTS = [
+  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'button', 'label', 'li',
+  'strong', 'em', 'b', 'i', 'u', 's', 'small', 'mark', 'code', 'pre', 'kbd', 'samp',
+  'sub', 'sup', 'abbr', 'cite', 'dfn', 'var', 'time', 'data', 'bdi', 'bdo', 'ruby', 'rt', 'rp',
+  'q', 'del', 'ins', 'output', 'meter', 'progress',
+];
 
 /** @type {string[]} Box elements rendered as native media players (leaf nodes). */
 export const MEDIA_ELEMENTS = ['video', 'audio'];
@@ -128,7 +143,8 @@ export function createNode(type, props = {}, element) {
   if (type === 'box') {
     node.props.element = element || props.element || 'div';
   } else if (type === 'text') {
-    node.props.element = element || props.element || 'p';
+    const el = element || props.element || 'p';
+    node.props.element = el;
     node.props.value = props.value || '';
   } else if (type === 'image') {
     node.props.src = props.src || '';

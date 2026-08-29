@@ -27,19 +27,26 @@ import * as pm from './page-model.js';
 /** Elements that map to box nodes (containers). */
 const BOX_ELEMENTS = new Set([
   'div', 'section', 'main', 'header', 'footer', 'article', 'aside', 'nav',
-  'ul', 'ol', 'video', 'audio', 'table', 'form',
+  'hgroup', 'search',
+  'blockquote', 'dd', 'dl', 'dt', 'figcaption', 'figure', 'li', 'menu', 'ol', 'ul',
+  'table', 'caption', 'colgroup', 'col', 'tbody', 'tfoot', 'thead', 'tr', 'td', 'th',
+  'form', 'fieldset', 'datalist', 'optgroup', 'option',
+  'details', 'dialog', 'summary',
+  'video', 'audio', 'address', 'noscript', 'slot',
 ]);
 
 /** Elements that map to text nodes (leaf, hold a `value`). */
 const TEXT_ELEMENTS = new Set([
-  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'blockquote',
-  'a', 'button', 'li', 'label', 'strong', 'em', 'b', 'i', 'code', 'pre', 'small',
+  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'a', 'button', 'label',
+  'strong', 'em', 'b', 'i', 'u', 's', 'small', 'mark', 'code', 'pre', 'kbd', 'samp',
+  'sub', 'sup', 'abbr', 'cite', 'dfn', 'var', 'time', 'data', 'bdi', 'bdo', 'ruby', 'rt', 'rp',
+  'q', 'del', 'ins', 'output', 'meter', 'progress',
 ]);
 
 /** Elements to skip entirely (reported in the import report). */
 const SKIP_ELEMENTS = new Set([
-  'noscript', 'iframe', 'object', 'embed', 'applet',
-  'canvas', 'template', 'slot',
+  'iframe', 'object', 'embed', 'applet',
+  'canvas', 'template',
 ]);
 
 /** SVG elements — preserved as box nodes (vector graphics) in the SVG namespace. */
@@ -224,15 +231,9 @@ function resolveBoxElement(tag, el) {
   if (SVG_ELEMENTS.has(tag)) return tag;
   if (BOX_ELEMENTS.has(tag) || TEXT_ELEMENTS.has(tag)) return tag;
   if (tag.includes('-')) return null; // custom element — handled by caller
-  // Unknown element — infer from computed display.
-  let disp = '';
-  try {
-    disp = getComputedStyle(el).display;
-  } catch (_) {}
-  if (disp === 'block' || disp === 'flex' || disp === 'grid' || disp === 'inline-block') {
-    return 'div';
-  }
-  return null;
+  if (VOID_ELEMENTS.has(tag)) return null;
+  // Unknown non-void element — preserve original tag name for 1:1 fidelity.
+  return tag;
 }
 
 /**
@@ -252,12 +253,7 @@ function walkNode(domNode, ctx) {
   // Text node → span Text node (only meaningful as a child of a box).
   if (domNode.nodeType === Node.TEXT_NODE) {
     const text = domNode.textContent || '';
-    // Preserve whitespace-only nodes that contain spaces — they create
-    // visible inline spacing between adjacent elements (e.g. between spans).
-    if (!text.trim()) {
-      if (/\s/.test(text)) return makeTextNode(' ');
-      return null;
-    }
+    if (!text.trim()) return null; // drop whitespace-only (formatting / insignificant)
     return makeTextNode(text);
   }
 
@@ -323,6 +319,11 @@ function walkNode(domNode, ctx) {
   // <br> → box node preserving the tag name (renders as a line break).
   if (tag === 'br') {
     return buildBoxNode('br', el, ctx);
+  }
+
+  // <wbr> → box node preserving the tag name (word break opportunity).
+  if (tag === 'wbr') {
+    return buildBoxNode('wbr', el, ctx);
   }
 
   // Other void elements in body (input, meta, link, etc.) — skip.
