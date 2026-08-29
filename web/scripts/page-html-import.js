@@ -129,16 +129,22 @@ function extractHead(doc) {
       case 'link': {
         const rel = (child.getAttribute('rel') || '').toLowerCase();
         const href = child.getAttribute('href');
-        if (rel === 'stylesheet' && href) {
+        if (rel === 'icon' || rel === 'shortcut icon' || rel === 'apple-touch-icon') {
+          // Skip favicons — not useful in the editor.
+        } else if (rel === 'stylesheet' && href) {
           head.push({
             type: 'stylesheet',
-            href, // original href — resolved at render time
+            href,
             media: child.getAttribute('media') || undefined,
           });
-        } else if (rel === 'icon' || rel === 'shortcut icon' || rel === 'apple-touch-icon') {
-          // Skip favicons — not useful in the editor.
-        } else if (href) {
-          warnings.push(`[skipped link] rel="${rel}" href="${href}"`);
+        } else if (href || rel) {
+          // Preserve all other <link> elements (preconnect, preload, dns-prefetch,
+          // canonical, manifest, alternate, modulepreload, etc.)
+          const attrs = {};
+          for (const attr of child.attributes) {
+            attrs[attr.name] = attr.value;
+          }
+          head.push({ type: 'link', attrs });
         }
         break;
       }
@@ -152,6 +158,7 @@ function extractHead(doc) {
       case 'meta': {
         const name = child.getAttribute('name');
         const property = child.getAttribute('property');
+        const httpEquiv = child.getAttribute('http-equiv');
         const charset = child.getAttribute('charset');
         const content = child.getAttribute('content');
         if (charset) {
@@ -161,6 +168,8 @@ function extractHead(doc) {
           head.push({ type: 'meta', name, content });
         } else if (property && content) {
           head.push({ type: 'meta', property, content });
+        } else if (httpEquiv && content) {
+          head.push({ type: 'meta', httpEquiv, content });
         }
         break;
       }
@@ -177,6 +186,10 @@ function extractHead(doc) {
         }
         break;
       }
+
+      case 'noscript':
+        // Skip — not useful in the editor.
+        break;
 
       default:
         break;
@@ -255,17 +268,16 @@ function walkNode(domNode, ctx) {
   // the parent <svg>'s innerHTML which we capture as raw content.
   if (SVG_ELEMENTS.has(tag) && tag !== 'svg') return null;
 
-  // <script> found while walking body → preserve in head, report, skip.
+  // <script> in body → box node preserving src/js/defer/async props.
   if (tag === 'script') {
+    const node = buildBoxNode('script', el, ctx);
     const src = el.getAttribute('src');
+    if (src) node.props.src = src;
     const js = el.textContent || '';
-    ctx.scripts.push(
-      src
-        ? { type: 'script', src, defer: el.hasAttribute('defer') || undefined, async: el.hasAttribute('async') || undefined }
-        : { type: 'script', js },
-    );
-    ctx.report.warnings.push('[script in body moved to head]');
-    return null;
+    if (js.trim()) node.props.js = js;
+    if (el.hasAttribute('defer')) node.props.defer = true;
+    if (el.hasAttribute('async')) node.props.async = true;
+    return node;
   }
 
   // Skip unsupported elements.
@@ -276,7 +288,8 @@ function walkNode(domNode, ctx) {
 
   // <img> → image node (src/alt live in props, not attrs, to avoid duplicates).
   if (tag === 'img') {
-    const id = ctx.nextId(el.getAttribute('id'));
+    const rawId = el.getAttribute('id');
+    const id = ctx.nextId(rawId);
     const node = {
       id,
       type: 'image',
@@ -286,9 +299,10 @@ function walkNode(domNode, ctx) {
       },
       styles: parseInlineStyle(el.getAttribute('style')),
       classes: splitClasses(el.getAttribute('class')),
-      attrs: extractAttrs(el, new Set(['src', 'alt', 'style', 'class', 'id'])),
+      attrs: extractAttrs(el, new Set(['src', 'alt', 'style', 'class'])),
       children: [],
     };
+    if (rawId) node.attrs.id = rawId;
     ctx.idMap.set(id, true);
     ctx.report.stats.total++;
     ctx.report.stats.images++;
@@ -369,15 +383,18 @@ function walkNode(domNode, ctx) {
  * @returns {import('./page-model.js').PageNode}
  */
 function buildNode(type, element, el, ctx) {
+  const rawId = el.getAttribute('id');
   const node = {
-    id: ctx.nextId(el.getAttribute('id')),
+    id: ctx.nextId(rawId),
     type,
     props: { element },
     styles: parseInlineStyle(el.getAttribute('style')),
     classes: splitClasses(el.getAttribute('class')),
-    attrs: extractAttrs(el, new Set(['style', 'class', 'id'])),
+    attrs: extractAttrs(el, new Set(['style', 'class'])),
     children: type === 'box' ? [] : undefined,
   };
+  // Preserve original id attribute so getElementById works in imported scripts
+  if (rawId) node.attrs.id = rawId;
   if (type === 'text') node.props.value = '';
   return node;
 }
@@ -434,13 +451,13 @@ export async function importHtml(html, options = {}) {
 
   // 2. Walk the body. <body> itself is not a node — its classes/inline styles
   //    are applied to the page root, and its children become the root's children.
+  //    Body attributes are preserved in doc.body for the canvas iframe.
   let nodeSeq = 0;
   const idMap = new Map();
   const ctx = {
     doc,
     report,
     idMap,
-    scripts: [],
     nextId(rawId) {
       if (rawId && /^[a-zA-Z0-9_-]+$/.test(rawId) && !idMap.has(rawId)) {
         idMap.set(rawId, true);
@@ -459,10 +476,19 @@ export async function importHtml(html, options = {}) {
   const rootNode = pm.createNode('box', { element: 'main' });
   idMap.set(rootNode.id, true);
 
+  /** Preserved body attributes for the canvas iframe <body> tag. */
+  const bodyInfo = { classes: [], styles: {}, attrs: {} };
+
   if (body) {
     const bodyClasses = splitClasses(body.getAttribute('class'));
-    if (bodyClasses.length) rootNode.classes = bodyClasses;
-    rootNode.styles = parseInlineStyle(body.getAttribute('style'));
+    if (bodyClasses.length) {
+      rootNode.classes = bodyClasses;
+      bodyInfo.classes = bodyClasses;
+    }
+    const bodyStyles = parseInlineStyle(body.getAttribute('style'));
+    rootNode.styles = bodyStyles;
+    bodyInfo.styles = bodyStyles;
+    bodyInfo.attrs = extractAttrs(body, new Set(['class', 'style', 'id']));
 
     for (const child of Array.from(body.childNodes)) {
       const childNode = walkNode(child, ctx);
@@ -470,22 +496,18 @@ export async function importHtml(html, options = {}) {
     }
   }
 
-  // 3. Append body <script> elements (captured while walking) to the head.
-  for (const s of ctx.scripts) {
-    headElems.push(s);
-  }
-
-  // 4. Build the PageDocument.
+  // 3. Build the PageDocument.
   const result = {
     version: 1,
     title: title || 'Imported Page',
     meta: { description: '', og_image: '' },
     head: headElems,
     classes: [],
+    body: bodyInfo,
     root: rootNode,
   };
 
-  // 5. Stats (root inclusive).
+  // 4. Stats (root inclusive).
   report.stats = countNodes(rootNode);
 
   return { doc: result, report };

@@ -182,6 +182,7 @@ export function createEmptyPage(title = 'New Page') {
  */
 const HEAD_DEFAULTS = {
   stylesheet: { href: '' },
+  link: { attrs: {} },
   style: { css: '' },
   meta: { name: '', content: '' },
   script: { src: '' },
@@ -476,8 +477,11 @@ export function validatePage(doc) {
       if (he.type === 'style' && !he.css) {
         errors.push(`Head element ${i} (style) must have 'css'`);
       }
-      if (he.type === 'meta' && !he.charset && !he.name && !he.property) {
-        errors.push(`Head element ${i} (meta) must have 'name', 'property', or 'charset'`);
+      if (he.type === 'meta' && !he.charset && !he.name && !he.property && !he.httpEquiv) {
+        errors.push(`Head element ${i} (meta) must have 'name', 'property', 'http-equiv', or 'charset'`);
+      }
+      if (he.type === 'link' && !he.attrs) {
+        errors.push(`Head element ${i} (link) must have 'attrs'`);
       }
       if (he.type === 'script' && !he.src && !he.js) {
         errors.push(`Head element ${i} (script) must have 'src' or 'js'`);

@@ -275,33 +275,87 @@ function rebuildIframeContent(doc, selectedNodeId, onSelect, onDrop, onAddNode, 
   const iframeDoc = getIframeDoc();
   if (!iframeDoc) return;
 
-  // Page CSS
+  // Page CSS from classes + inline <style> head elements
   let pageCss = buildPageCss(doc);
+
+  // Build <link> and <meta> tags for head elements (NOT scripts — those are injected via DOM)
+  let headExtras = '';
+  const scriptsToInject = [];
   if (Array.isArray(doc.head)) {
     for (const he of doc.head) {
       if (he.type === 'stylesheet' && he.href) {
-        pageCss += `@import url("${he.href}");\n`;
+        const media = he.media ? ` media="${he.media}"` : '';
+        headExtras += `<link rel="stylesheet" href="${he.href}"${media}>\n`;
+      } else if (he.type === 'link' && he.attrs) {
+        // Preserve all other <link> elements (preconnect, preload, canonical, etc.)
+        const parts = ['link'];
+        for (const [k, v] of Object.entries(he.attrs)) {
+          parts.push(`${k}="${v}"`);
+        }
+        headExtras += `<${parts.join(' ')}>\n`;
+      } else if (he.type === 'meta') {
+        if (he.charset) {
+          headExtras += `<meta charset="${he.charset}">\n`;
+        } else if (he.name && he.content) {
+          headExtras += `<meta name="${he.name}" content="${he.content}">\n`;
+        } else if (he.property && he.content) {
+          headExtras += `<meta property="${he.property}" content="${he.content}">\n`;
+        } else if (he.httpEquiv && he.content) {
+          headExtras += `<meta http-equiv="${he.httpEquiv}" content="${he.content}">\n`;
+        }
+      } else if (he.type === 'script') {
+        scriptsToInject.push(he);
       }
     }
   }
 
+  // Build <body> tag with preserved attributes
+  const bodyInfo = doc.body || {};
+  const bodyClasses = (bodyInfo.classes || []).length ? ` class="${bodyInfo.classes.join(' ')}"` : '';
+  const bodyStyleParts = Object.entries(bodyInfo.styles || {}).map(([k, v]) => `${k}: ${v}`);
+  const bodyStyle = bodyStyleParts.length ? ` style="${bodyStyleParts.join(';')}"` : '';
+  let bodyExtraAttrs = '';
+  for (const [k, v] of Object.entries(bodyInfo.attrs || {})) {
+    bodyExtraAttrs += ` ${k}="${v}"`;
+  }
+
+  // Write the document skeleton (no <script> tags — they block the parser)
   iframeDoc.open();
   iframeDoc.write(`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <base href="/files/${_projectId}/">
+<title>${doc.title || ''}</title>
 <style>${EDITOR_CANVAS_CSS}</style>
 ${pageCss ? `<style>${pageCss}</style>` : ''}
+${headExtras}
 </head>
-<body style="margin:0;padding:0;">
+<body${bodyClasses}${bodyStyle}${bodyExtraAttrs}>
 </body>
 </html>`);
   iframeDoc.close();
 
-  // Render page nodes directly into the iframe body
-  if (!doc.root) return;
-  renderNode(iframeDoc.body, doc.root, selectedNodeId, onSelect, onDrop, onAddNode);
+  // Render root's children directly into <body> (root is a model container, not a DOM element)
+  if (!doc.root || !doc.root.children) return;
+  for (const child of doc.root.children) {
+    renderNode(iframeDoc.body, child, selectedNodeId, onSelect, onDrop, onAddNode);
+  }
+
+  // Inject scripts AFTER body content so getElementById etc. find their targets
+  if (iframeDoc.head) {
+    for (const he of scriptsToInject) {
+      const s = iframeDoc.createElement('script');
+      if (he.src) {
+        s.src = he.src;
+        if (he.defer) s.defer = true;
+        if (he.async) s.async = true;
+      } else if (he.js) {
+        s.textContent = he.js;
+      }
+      iframeDoc.head.appendChild(s);
+    }
+  }
 }
 
 // ================== OVERLAY INTERACTIONS ==================
@@ -313,6 +367,16 @@ ${pageCss ? `<style>${pageCss}</style>` : ''}
 function wireOverlayInteractions(overlay, canvasRoot, doc, onSelect, onDrop, onAddNode) {
   let hoveredNode = null;
   let dragStarted = false;
+
+  // ── Forward wheel events to the scroll container so the canvas can scroll ──
+  overlay.addEventListener('wheel', (e) => {
+    const scrollContainer = canvasRoot.querySelector('.canvas-viewport-scroll');
+    if (scrollContainer) {
+      scrollContainer.scrollLeft += e.deltaX;
+      scrollContainer.scrollTop += e.deltaY;
+    }
+    e.preventDefault();
+  }, { passive: false });
 
   // ── Hover ──
   overlay.addEventListener('mousemove', (e) => {
@@ -568,24 +632,19 @@ function renderText(parent, node, selectedId, onSelect) {
 
 function renderImage(parent, node, selectedId, onSelect) {
   const doc = parent.ownerDocument;
-  const wrapper = doc.createElement('div');
-  wrapper.dataset.nodeId = node.id;
-  wrapper.dataset.nodeType = 'image';
-  wrapper.dataset.element = 'img';
-  wrapper.classList.add('canvas-page-node');
-  applyStyles(wrapper, node);
-  applyClasses(wrapper, node);
-
   const tag = doc.createElement('img');
+  tag.dataset.nodeId = node.id;
+  tag.dataset.nodeType = 'image';
+  tag.dataset.element = 'img';
+  tag.classList.add('canvas-page-node');
   tag.src = resolveImgSrc(node.props && node.props.src);
   tag.alt = (node.props && node.props.alt) || '';
-  tag.style.maxWidth = '100%';
-  tag.style.display = 'block';
-  tag.classList.add('canvas-media-img');
-  wrapper.append(tag);
+  applyStyles(tag, node);
+  applyClasses(tag, node);
+  applyAttrs(tag, node);
 
-  if (node.id === selectedId) wrapper.classList.add('selected');
-  parent.append(wrapper);
+  if (node.id === selectedId) tag.classList.add('selected');
+  parent.append(tag);
 }
 
 function renderMedia(parent, node, selectedId, onSelect) {
@@ -623,7 +682,7 @@ function applyClasses(tag, node) {
 function applyAttrs(tag, node) {
   const attrs = (node && node.attrs) || {};
   for (const [key, value] of Object.entries(attrs)) {
-    if (key === 'style' || key === 'class' || key === 'id') continue;
+    if (key === 'style' || key === 'class') continue;
     if (/^on/i.test(key)) continue;
     tag.setAttribute(key, value == null ? '' : String(value));
   }
