@@ -160,7 +160,7 @@ export function enableDrag({ handle, row, api, nodeId }) {
 
     function maybeExpandHover(x, y) {
       const under = document.elementFromPoint(x, y)?.closest('.field-item.prop-row');
-      const idStr = under?.dataset.nodeId;
+      const idStr = under?.dataset.nid;
       const id = idStr !== undefined ? Number(idStr) : NaN;
       if (
         !under ||

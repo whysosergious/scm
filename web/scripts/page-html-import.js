@@ -456,20 +456,20 @@ export async function importHtml(html, options = {}) {
   // 2. Walk the body. <body> itself is not a node — its classes/inline styles
   //    are applied to the page root, and its children become the root's children.
   //    Body attributes are preserved in doc.body for the canvas iframe.
-  let nodeSeq = 0;
   const idMap = new Map();
   const ctx = {
     doc,
     report,
     idMap,
     nextId(rawId) {
-      if (rawId && /^[a-zA-Z0-9_-]+$/.test(rawId) && !idMap.has(rawId)) {
+      if (rawId && /^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(rawId) && !idMap.has(rawId)) {
         idMap.set(rawId, true);
         return rawId;
       }
+      // Use the global counter to guarantee uniqueness across import + editing
       let id;
       do {
-        id = `node-${++nodeSeq}`;
+        id = pm.generateId();
       } while (idMap.has(id));
       idMap.set(id, true);
       return id;

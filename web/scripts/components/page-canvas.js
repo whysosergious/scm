@@ -413,8 +413,8 @@ function wireOverlayInteractions(overlay, canvasRoot, doc, onSelect, onDrop, onA
     if (!coords) return;
     const hit = iframeElementFromPoint(coords.x, coords.y);
     const node = findPageNode(hit);
-    if (node && node.dataset.nodeId) {
-      onSelect(node.dataset.nodeId);
+    if (node && node.dataset.nid) {
+      onSelect(node.dataset.nid);
     } else if (hit && hit.tagName === 'BODY') {
       onSelect('__body__');
     }
@@ -437,8 +437,8 @@ function wireOverlayInteractions(overlay, canvasRoot, doc, onSelect, onDrop, onA
     if (!coords) return;
     const hit = iframeElementFromPoint(coords.x, coords.y);
     const node = findPageNode(hit);
-    if (node && node.dataset.nodeId) {
-      startDragTracking(null, node.dataset.nodeId, e.clientX, e.clientY);
+    if (node && node.dataset.nid) {
+      startDragTracking(null, node.dataset.nid, e.clientX, e.clientY);
     }
   });
 
@@ -454,7 +454,7 @@ function wireOverlayInteractions(overlay, canvasRoot, doc, onSelect, onDrop, onA
       if (st.nodeId) {
         const iframeDoc = getIframeDoc();
         if (iframeDoc) {
-          const el = iframeDoc.querySelector(`[data-node-id="${st.nodeId}"]`);
+          const el = iframeDoc.querySelector(`[data-nid="${st.nodeId}"]`);
           if (el) el.classList.add('dragging');
         }
       }
@@ -476,7 +476,7 @@ function wireOverlayInteractions(overlay, canvasRoot, doc, onSelect, onDrop, onA
     const target = findDropTarget(e);
 
     if (target) {
-      const targetNodeId = target.element.dataset.nodeId;
+      const targetNodeId = target.element.dataset.nid;
       const targetDoc = doc;
 
       if (st.componentType) {
@@ -546,9 +546,9 @@ function findDropTarget(dragEvent) {
   // Walk up from the hit element
   let el = iframeElementFromPoint(coords.x, coords.y);
   while (el && el !== iframeDoc.body) {
-    if (el.classList && el.classList.contains('canvas-page-node') && el.dataset.nodeId) {
+    if (el.classList && el.classList.contains('canvas-page-node') && el.dataset.nid) {
       // Skip the node being dragged
-      if (draggingId && el.dataset.nodeId === draggingId) {
+      if (draggingId && el.dataset.nid === draggingId) {
         el = el.parentElement;
         continue;
       }
@@ -607,7 +607,7 @@ function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
   const tag = isSvg
     ? doc.createElementNS('http://www.w3.org/2000/svg', element)
     : doc.createElement(element);
-  tag.dataset.nodeId = node.id;
+  tag.dataset.nid = node.id;
   tag.dataset.nodeType = 'box';
   tag.dataset.element = element;
   tag.classList.add('canvas-page-node');
@@ -653,7 +653,7 @@ function renderText(parent, node, selectedId, onSelect) {
   const element = (node.props && node.props.element) || 'p';
   const doc = parent.ownerDocument;
   const tag = doc.createElement(element);
-  tag.dataset.nodeId = node.id;
+  tag.dataset.nid = node.id;
   tag.dataset.nodeType = 'text';
   tag.dataset.element = element;
   tag.classList.add('canvas-page-node');
@@ -669,7 +669,7 @@ function renderText(parent, node, selectedId, onSelect) {
 function renderImage(parent, node, selectedId, onSelect) {
   const doc = parent.ownerDocument;
   const tag = doc.createElement('img');
-  tag.dataset.nodeId = node.id;
+  tag.dataset.nid = node.id;
   tag.dataset.nodeType = 'image';
   tag.dataset.element = 'img';
   tag.classList.add('canvas-page-node');
@@ -687,7 +687,7 @@ function renderMedia(parent, node, selectedId, onSelect) {
   const element = (node.props && node.props.element) || 'video';
   const doc = parent.ownerDocument;
   const wrapper = doc.createElement('div');
-  wrapper.dataset.nodeId = node.id;
+  wrapper.dataset.nid = node.id;
   wrapper.dataset.nodeType = 'box';
   wrapper.dataset.element = element;
   wrapper.classList.add('canvas-page-node', 'canvas-media');
@@ -740,70 +740,73 @@ function showElementPicker(canvasRoot, mouseEvent, doc, onSelect) {
   const coords = parentToIframeCoords(mouseEvent);
   if (!coords) return;
 
-  const nodes = [];
-  const seen = new Set();
-  let hit = iframeElementFromPoint(coords.x, coords.y);
   const iframeDoc = getIframeDoc();
+  if (!iframeDoc) return;
 
-  while (hit && hit.classList) {
-    if (hit.classList.contains('canvas-page-node') && hit.dataset.nodeId && !seen.has(hit.dataset.nodeId)) {
-      seen.add(hit.dataset.nodeId);
-      const treeNode = pm.findNode(doc.root, hit.dataset.nodeId);
-      if (treeNode) nodes.push({ domEl: hit, treeNode });
-    }
-    hit = hit.parentElement;
+  const hit = iframeElementFromPoint(coords.x, coords.y);
+  if (!hit) return;
+
+  // Walk up from hit, collecting ALL elements in the ancestry
+  const ancestry = [];
+  let cur = hit;
+  while (cur && cur !== iframeDoc.documentElement) {
+    ancestry.push(cur);
+    cur = cur.parentElement;
   }
+  // ancestry is innermost-first; reverse to show outermost first
+  ancestry.reverse();
 
-  // Include <body> as the outermost option if we're inside the iframe
-  if (iframeDoc && hit === null) {
-    // Walked up past the document — the body is reachable
-  }
-
-  if (nodes.length === 0 && !(iframeDoc && iframeDoc.body)) return;
+  if (ancestry.length === 0) return;
 
   const picker = el('div', { class: 'canvas-element-picker' });
   picker.style.top = `${mouseEvent.clientY}px`;
   picker.style.left = `${mouseEvent.clientX}px`;
 
-  // Add <body> as the outermost entry
-  if (iframeDoc && iframeDoc.body) {
-    const bodyItem = el('div', { class: 'canvas-picker-item' },
-      el('span', { class: 'canvas-picker-badge', text: 'body' }),
-      el('span', { text: '<body>' }),
-    );
-    bodyItem.addEventListener('mouseenter', () => { iframeDoc.body.classList.add('canvas-picker-highlight'); });
-    bodyItem.addEventListener('mouseleave', () => { iframeDoc.body.classList.remove('canvas-picker-highlight'); });
-    bodyItem.addEventListener('click', (e) => {
-      e.stopPropagation();
-      onSelect('__body__');
-      closeElementPicker(canvasRoot);
-    });
-    picker.append(bodyItem);
-  }
+  for (const domEl of ancestry) {
+    const isPageNode = domEl.classList.contains('canvas-page-node');
+    const nodeId = isPageNode ? domEl.dataset.nid : null;
+    const treeNode = nodeId ? pm.findNode(doc.root, nodeId) : null;
 
-  // Add page nodes (innermost first — reverse so outermost is last)
-  for (const { domEl, treeNode } of nodes.reverse()) {
-    const element = treeNode.props?.element || treeNode.type;
-    const typeBadge = treeNode.type === 'box' ? 'box' : treeNode.type === 'text' ? 'text' : 'img';
-    const label = treeNode.type === 'text'
-      ? `${element}: "${(treeNode.props?.value || '').slice(0, 30)}"`
-      : treeNode.type === 'image'
-        ? `img: ${treeNode.props?.alt || treeNode.props?.src || ''}`
-        : element;
+    // Build label
+    let label;
+    let badge;
+    if (treeNode) {
+      const element = treeNode.props?.element || treeNode.type;
+      badge = treeNode.type === 'box' ? 'box' : treeNode.type === 'text' ? 'text' : 'img';
+      label = treeNode.type === 'text'
+        ? `${element}: "${(treeNode.props?.value || '').slice(0, 30)}"`
+        : treeNode.type === 'image'
+          ? `img: ${treeNode.props?.alt || treeNode.props?.src || ''}`
+          : `<${element}>`;
+    } else if (domEl.tagName === 'BODY') {
+      badge = 'body';
+      label = '<body>';
+    } else {
+      badge = domEl.tagName.toLowerCase();
+      const id = domEl.id ? `#${domEl.id}` : '';
+      const cls = domEl.className && typeof domEl.className === 'string'
+        ? '.' + domEl.className.trim().split(/\s+/).slice(0, 2).join('.')
+        : '';
+      label = `<${domEl.tagName.toLowerCase()}${id}${cls}>`;
+    }
 
     const item = el('div', { class: 'canvas-picker-item' },
-      el('span', { class: 'canvas-picker-badge', text: typeBadge }),
+      el('span', { class: 'canvas-picker-badge', text: badge }),
       el('span', { text: label }),
     );
 
+    // Highlight on hover
     item.addEventListener('mouseenter', () => {
-      if (iframeDoc) iframeDoc.querySelectorAll('.canvas-picker-highlight').forEach((n) => n.classList.remove('canvas-picker-highlight'));
+      iframeDoc.querySelectorAll('.canvas-picker-highlight').forEach((n) => n.classList.remove('canvas-picker-highlight'));
       domEl.classList.add('canvas-picker-highlight');
     });
     item.addEventListener('mouseleave', () => { domEl.classList.remove('canvas-picker-highlight'); });
+
+    // Click — select the node (or body)
     item.addEventListener('click', (e) => {
       e.stopPropagation();
-      onSelect(treeNode.id);
+      if (treeNode) onSelect(treeNode.id);
+      else if (domEl.tagName === 'BODY') onSelect('__body__');
       closeElementPicker(canvasRoot);
     });
     picker.append(item);
@@ -821,6 +824,135 @@ function closeElementPicker(canvasRoot) {
   canvasRoot.querySelectorAll('.canvas-element-picker').forEach((p) => p.remove());
   const iframeDoc = getIframeDoc();
   if (iframeDoc) iframeDoc.querySelectorAll('.canvas-picker-highlight').forEach((n) => n.classList.remove('canvas-picker-highlight'));
+}
+
+// ================== TARGETED DOM PATCHING ==================
+
+/**
+ * Patch a single node's DOM element in place — updates styles, classes, attrs,
+ * text content, img src/alt, and SVG innerHTML without rebuilding the iframe.
+ * Returns true if the node was found and patched, false otherwise.
+ *
+ * Falls back to returning false (caller should full re-render) when:
+ * - The node's element type changed (e.g. div → section)
+ * - The node is not found in the DOM
+ *
+ * @param {string} nodeId
+ * @param {import('../page-model.js').PageNode} node
+ * @param {string|null} selectedId - Currently selected node ID.
+ * @returns {boolean} Whether the patch was applied successfully.
+ */
+export function patchNode(nodeId, node, selectedId) {
+  const iframeDoc = getIframeDoc();
+  if (!iframeDoc) return false;
+
+  const dom = iframeDoc.querySelector(`[data-nid="${CSS.escape(nodeId)}"]`);
+  if (!dom) return false;
+
+  // Element type change → caller must full re-render
+  const newElement = (node.props && node.props.element) || node.type;
+  if (dom.dataset.element !== newElement) return false;
+
+  // ── Styles ──
+  dom.style.cssText = '';
+  applyStyles(dom, node);
+
+  // ── Classes ──
+  dom.className = 'canvas-page-node';
+  applyClasses(dom, node);
+  dom.classList.toggle('selected', node.id === selectedId);
+
+  // ── Attributes ──
+  // Remove all non-data/non-class/non-style attrs first
+  for (const attr of Array.from(dom.attributes)) {
+    if (attr.name.startsWith('data-') || attr.name === 'class' || attr.name === 'style') continue;
+    dom.removeAttribute(attr.name);
+  }
+  applyAttrs(dom, node);
+
+  // ── Content (type-specific) ──
+  if (node.type === 'text') {
+    // Text content — update in place
+    const newContent = (node.props && node.props.value) || '';
+    if (dom.textContent !== newContent) dom.textContent = newContent;
+  } else if (node.type === 'image') {
+    // Image — update src/alt (the <img> may be a direct element or inside a wrapper)
+    const img = dom.tagName === 'IMG' ? dom : dom.querySelector('img');
+    if (img) {
+      const newSrc = resolveImgSrc(node.props && node.props.src);
+      if (img.src !== newSrc) img.src = newSrc;
+      const newAlt = (node.props && node.props.alt) || '';
+      if (img.alt !== newAlt) img.alt = newAlt;
+    }
+  } else if (node.type === 'box') {
+    if (node.props && node.props.innerHTML) {
+      // SVG / raw HTML content — update innerHTML
+      const isSvg = newElement === 'svg';
+      const raw = node.props.innerHTML;
+      if (isSvg && /^\s*<svg[\s>]/i.test(raw)) {
+        const tmp = iframeDoc.createElement('div');
+        tmp.innerHTML = raw;
+        const svg = tmp.querySelector('svg');
+        if (svg) {
+          // Clear existing children
+          while (dom.firstChild) dom.removeChild(dom.firstChild);
+          // Move attributes
+          for (const attr of Array.from(svg.attributes)) {
+            dom.setAttribute(attr.name, attr.value);
+          }
+          applyAttrs(dom, node);
+          // Move children
+          while (svg.firstChild) dom.appendChild(svg.firstChild);
+        }
+      } else {
+        if (dom.innerHTML !== raw) dom.innerHTML = raw;
+      }
+    } else if (node.children && node.children.length > 0) {
+      // Box with children — structural change, caller should full re-render
+      return false;
+    } else if (_showEmpty) {
+      dom.classList.add('canvas-empty-box');
+    } else {
+      dom.classList.remove('canvas-empty-box');
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Patch body attributes (classes, styles, attrs) without rebuilding the iframe.
+ * @param {Object} doc - Page document with body property.
+ */
+export function patchBodyAttrs(doc) {
+  const iframeDoc = getIframeDoc();
+  if (!iframeDoc || !iframeDoc.body) return;
+
+  const body = doc.body || {};
+  const bodyEl = iframeDoc.body;
+
+  // Classes
+  bodyEl.className = '';
+  if (body.classes && body.classes.length) bodyEl.classList.add(...body.classes);
+
+  // Styles
+  bodyEl.style.cssText = '';
+  if (body.styles) {
+    for (const [k, v] of Object.entries(body.styles)) {
+      try { bodyEl.style.setProperty(k, v); } catch (_) { /* skip */ }
+    }
+  }
+
+  // Attributes
+  for (const attr of Array.from(bodyEl.attributes)) {
+    if (attr.name === 'class' || attr.name === 'style') continue;
+    bodyEl.removeAttribute(attr.name);
+  }
+  if (body.attrs) {
+    for (const [k, v] of Object.entries(body.attrs)) {
+      bodyEl.setAttribute(k, v == null ? '' : String(v));
+    }
+  }
 }
 
 // ================== SIZE LABEL ==================

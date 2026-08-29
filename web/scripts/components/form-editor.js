@@ -137,7 +137,7 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
   function renderRow(node, parent, index, depth) {
     const row = el('div', {
       class: `field-item prop-row ${api.collapsed.has(node.id) ? 'collapsed' : ''}`,
-      'data-node-id': String(node.id),
+      'data-nid': String(node.id),
     });
 
     const handle = el(
@@ -640,7 +640,7 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
   function toggleCollapse(id) {
     if (api.collapsed.has(id)) api.collapsed.delete(id);
     else api.collapsed.add(id);
-    const row = rootEl.querySelector(`[data-node-id="${id}"]`);
+    const row = rootEl.querySelector(`[data-nid="${id}"]`);
     if (row) row.classList.toggle('collapsed', api.collapsed.has(id));
   }
 
@@ -648,7 +648,7 @@ export function createFormEditor(rootEl, { tree, onDirty }) {
   function expand(id) {
     if (!api.collapsed.has(id)) return false;
     api.collapsed.delete(id);
-    const row = rootEl.querySelector(`[data-node-id="${id}"]`);
+    const row = rootEl.querySelector(`[data-nid="${id}"]`);
     if (row) row.classList.remove('collapsed');
     return true;
   }

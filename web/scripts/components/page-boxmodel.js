@@ -100,7 +100,7 @@ export function renderBoxModel(canvasEl, node, onChange) {
   const iframe = getIframe();
   if (!iframe) return;
 
-  const targetEl = iframeDoc.querySelector(`[data-node-id="${node.id}"]`);
+  const targetEl = iframeDoc.querySelector(`[data-nid="${node.id}"]`);
   if (!targetEl) return;
 
   const zoomWrap = canvasEl.querySelector('.canvas-zoom-wrap');
@@ -191,7 +191,7 @@ function renderTransformFrame(zoomWrap, top, left, w, h, zoom, targetEl, node, o
         // Re-query the target element after onChange (iframe may have re-rendered)
         const iframeDoc = getIframeDoc();
         if (iframeDoc) {
-          const freshEl = iframeDoc.querySelector(`[data-node-id="${node.id}"]`);
+          const freshEl = iframeDoc.querySelector(`[data-nid="${node.id}"]`);
           if (freshEl) {
             // Update frame position to match the (potentially) changed element
             if (zoomWrap) {

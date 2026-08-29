@@ -58,9 +58,9 @@ function getVisibleItems(root) {
     if (row.classList.contains('tree-item-head')) {
       const idx = parseInt(row.dataset.headIndex, 10);
       items.push({ type: 'head', index: idx, el: row });
-    } else if (row.dataset.nodeId) {
+    } else if (row.dataset.nid) {
       const isBodyRow = row.classList.contains('tree-item-body');
-      items.push({ type: 'body', nodeId: row.dataset.nodeId, el: row, isBodyRow });
+      items.push({ type: 'body', nodeId: row.dataset.nid, el: row, isBodyRow });
     }
   });
   return items;
@@ -229,7 +229,7 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
     : '';
   const bodyRow = el('div', {
     class: 'tree-item tree-item-body' + (selectedNodeId === BODY_ID ? ' selected' : ''),
-    'data-node-id': BODY_ID,
+    'data-nid': BODY_ID,
     style: { paddingLeft: '4px' },
   });
   bodyRow.append(el('span', { class: 'tree-chevron tree-chevron--leaf', text: '' }));
@@ -249,7 +249,7 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
 
     const row = el('div', {
       class: 'tree-item' + (selectedNodeId === node.id ? ' selected' : '') + ' tree-draggable',
-      'data-node-id': node.id,
+      'data-nid': node.id,
       style: { paddingLeft: `${4 + depth * 7}px` },
     });
     row.setAttribute('draggable', 'true');

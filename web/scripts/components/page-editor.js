@@ -7,7 +7,7 @@ import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
 import { patch, refreshGitStatus, refreshPages, selectedProject, setPageDirty, state } from '../state.js';
 import { renderPalette } from './page-palette.js';
-import { renderCanvas, setProjectId, isDragging, setShowEmpty, updateSizeLabel } from './page-canvas.js';
+import { renderCanvas, setProjectId, isDragging, setShowEmpty, updateSizeLabel, patchNode, patchBodyAttrs } from './page-canvas.js';
 import { getIframeDoc, setZoomScale } from './canvas-iframe.js';
 import { renderInspector, renderHeadInspector, renderBodyInspector } from './page-inspector.js';
 import { renderTree } from './page-tree.js';
@@ -175,7 +175,14 @@ function renderEditor(root, project) {
     emptyCheck.classList.toggle('checked', showEmpty);
     localStorage.setItem(LS_SHOW_EMPTY, showEmpty);
     setShowEmpty(showEmpty);
-    renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+    // Toggle empty-box class on all box nodes in the iframe (no full re-render)
+    const iframeDoc = getIframeDoc();
+    if (iframeDoc) {
+      iframeDoc.querySelectorAll('.canvas-page-node[data-node-type="box"]').forEach((n) => {
+        // Only toggle on leaf boxes (no children rendered inside)
+        if (n.children.length === 0) n.classList.toggle('canvas-empty-box', showEmpty);
+      });
+    }
     if (selectedNodeId && selectedNodeId !== '__body__') {
       requestAnimationFrame(() => {
         const node = pm.findNode(doc.root, selectedNodeId);
@@ -575,7 +582,7 @@ function renderEditor(root, project) {
     const iframeDoc = getIframeDoc();
     if (iframeDoc) {
       iframeDoc.querySelectorAll('.canvas-page-node').forEach((n) => {
-        n.classList.toggle('selected', n.dataset.nodeId === id);
+        n.classList.toggle('selected', n.dataset.nid === id);
       });
       // Body pseudo-node: highlight the <body> element
       if (iframeDoc.body) {
@@ -603,10 +610,25 @@ function renderEditor(root, project) {
     clearBoxModel(canvasEl);
   }
 
-  /** Handle any property change: mark dirty, re-render canvas, tree, box model. */
+  /** Handle any property change: mark dirty, patch DOM in place, re-render tree. */
   function onNodeChange() {
     markDirty(true);
-    renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+    // Try targeted patching first — only full re-render if patch fails
+    let patched = false;
+    if (selectedHeadIndex !== null) {
+      // Head element change → full re-render (affects iframe <head>)
+      renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+      patched = true;
+    } else if (selectedNodeId === '__body__') {
+      patchBodyAttrs(doc);
+      patched = true;
+    } else if (selectedNodeId) {
+      const node = pm.findNode(doc.root, selectedNodeId);
+      if (node) patched = patchNode(selectedNodeId, node, selectedNodeId);
+    }
+    if (!patched) {
+      renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+    }
     refreshTree();
     if (selectedNodeId && selectedNodeId !== '__body__') {
       requestAnimationFrame(() => {

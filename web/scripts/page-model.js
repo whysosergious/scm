@@ -4,7 +4,7 @@
 
 /**
  * @typedef {Object} PageNode
- * @property {string} id - Unique node identifier (e.g. "node-1").
+ * @property {string} id - Unique node identifier (e.g. "n1").
  * @property {'box'|'text'|'image'} type - Node type.
  * @property {Object<string, *>} props - Type-specific properties (element, value, src, alt, etc.).
  * @property {Object<string, string>} [styles] - Inline CSS styles.
@@ -138,12 +138,30 @@ export function createNode(type, props = {}, element) {
 }
 
 /**
- * Generate the next unique node id (e.g. "node-1", "node-2", …).
+ * Generate the next unique node id (e.g. "n1", "n2", …).
  *
  * @returns {string} A new unique node id.
  */
 export function generateId() {
-  return `node-${nextId++}`;
+  return `n${nextId++}`;
+}
+
+/**
+ * Return the current next-id counter value (for import use).
+ * Import must use this instead of its own counter to avoid ID collisions.
+ *
+ * @returns {number} The current counter value (next call to generateId will use this).
+ */
+export function getNextId() {
+  return nextId;
+}
+
+/**
+ * Set the next-id counter (used by import to advance past its generated IDs).
+ * @param {number} v
+ */
+export function setNextId(v) {
+  nextId = v;
 }
 
 /**
@@ -152,7 +170,7 @@ export function generateId() {
  *
  * @param {number} [start=1] - Next id number to use.
  */
-export function resetIdCounter(start = 1) {
+export function resetIdCounter(start) {
   nextId = start;
 }
 
@@ -552,12 +570,16 @@ function validateNode(node, seenIds, errors) {
  */
 export function parsePage(text) {
   const doc = JSON.parse(text);
-  // Scan all node ids and set counter above max
+  // Scan all node ids and set counter above max (supports both "n1" and legacy "node-1")
   let maxId = 0;
   function scanIds(node) {
     if (node && node.id) {
-      const m = node.id.match(/^node-(\d+)$/);
+      const m = node.id.match(/^n(\d+)$/);
       if (m) maxId = Math.max(maxId, parseInt(m[1], 10));
+      else {
+        const m2 = node.id.match(/^node-(\d+)$/);
+        if (m2) maxId = Math.max(maxId, parseInt(m2[1], 10));
+      }
     }
     if (node && node.children) {
       node.children.forEach(scanIds);
