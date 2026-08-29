@@ -46,7 +46,7 @@ let nextId = 1;
 export const NODE_TYPES = ['box', 'text', 'image'];
 
 /** @type {string[]} HTML elements allowed for box nodes. */
-export const BOX_ELEMENTS = ['div', 'section', 'header', 'main', 'footer', 'article', 'aside', 'nav', 'ul', 'ol', 'video', 'audio'];
+export const BOX_ELEMENTS = ['div', 'section', 'header', 'main', 'footer', 'article', 'aside', 'nav', 'ul', 'ol', 'video', 'audio', 'br'];
 
 /** @type {string[]} HTML elements allowed for text nodes. */
 export const TEXT_ELEMENTS = ['p', 'h1', 'h2', 'h3', 'span', 'blockquote', 'a', 'button', 'li'];

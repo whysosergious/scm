@@ -229,21 +229,40 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
         el('div', { class: 'inspector-type', text: '<svg>' }),
       ));
 
-      const ta = el('textarea', {
-        class: 'value-input',
-        rows: '12',
-        placeholder: '<svg ...>...</svg>',
-        style: { fontFamily: 'monospace', fontSize: '11px', whiteSpace: 'pre', overflow: 'auto' },
-      });
-      ta.value = (node.props && node.props.innerHTML) || '';
-      ta.addEventListener('input', () => {
-        node.props.innerHTML = ta.value;
-        onChange();
-      });
-      root.append(el('div', { class: 'inspector-section' },
+      const editorWrap = el('div', { class: 'inspector-section' },
         el('label', { text: 'SVG Markup' }),
-        ta,
-      ));
+      );
+      const editorContainer = el('div', { style: { height: '200px', border: '1px solid var(--color-outline)', borderRadius: '4px', overflow: 'hidden' } });
+      editorWrap.append(editorContainer);
+      root.append(editorWrap);
+
+      // Load CodeMirror and create HTML editor
+      const svgValue = (node.props && node.props.innerHTML) || '';
+      import('../vendor/code-editor.bundle.js').then(() => {
+        const editor = document.createElement('code-editor');
+        editor.setAttribute('language', 'html');
+        editor.style.height = '200px';
+        editor.value = svgValue;
+        editor.addEventListener('input', () => {
+          node.props.innerHTML = editor.value;
+          onChange();
+        });
+        editorContainer.append(editor);
+      }).catch(() => {
+        // Fallback: plain textarea
+        const ta = el('textarea', {
+          class: 'value-input',
+          rows: '10',
+          placeholder: '<svg ...>...</svg>',
+          style: { fontFamily: 'monospace', fontSize: '11px', whiteSpace: 'pre', overflow: 'auto', width: '100%', height: '200px', boxSizing: 'border-box' },
+        });
+        ta.value = svgValue;
+        ta.addEventListener('input', () => {
+          node.props.innerHTML = ta.value;
+          onChange();
+        });
+        editorContainer.append(ta);
+      });
     } else {
       const elements = node.type === 'box' ? pm.BOX_ELEMENTS : pm.TEXT_ELEMENTS;
       const currentEl = (node.props && node.props.element) || elements[0];
@@ -531,7 +550,26 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
   function renderAttrs() {
     attrsContainer.textContent = '';
 
+    // Show 'class' attribute at the top (bound to node.classes array)
+    if (!node.classes) node.classes = [];
+    const classRow = el('div', { class: 'inspector-css-row', 'data-attr-key': 'class' });
+    classRow.append(el('span', { class: 'inspector-css-label', text: 'class' }));
+    const classInput = el('input', {
+      type: 'text',
+      class: 'value-input inspector-css-value',
+      value: node.classes.join(' '),
+      placeholder: 'class1 class2',
+    });
+    classInput.addEventListener('focus', () => classInput.select());
+    classInput.addEventListener('input', () => {
+      node.classes = classInput.value.split(/\s+/).filter(Boolean);
+      onChange();
+    });
+    classRow.append(classInput);
+    attrsContainer.append(classRow);
+
     for (const [key, val] of Object.entries(node.attrs)) {
+      if (key === 'class') continue; // handled above
       const row = el('div', { class: 'inspector-css-row', 'data-attr-key': key });
 
       row.append(el('span', { class: 'inspector-css-label', text: key }));
@@ -582,183 +620,6 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
   const attrsSection = makeCollapsibleSection('attributes', 'Attributes', attrsContainer);
 
   root.append(attrsSection);
-
-  // Reusable classes (assignment)
-
-  root.append(el('div', { class: 'inspector-section' },
-    el('label', { text: 'Classes' }),
-  ));
-
-  if (!node.classes) node.classes = [];
-
-  if (doc.classes && doc.classes.length > 0) {
-    for (const cls of doc.classes) {
-      const assigned = node.classes.includes(cls.name);
-      const label = el('label', { class: 'inspector-class-item' });
-      const cb = el('input', { type: 'checkbox' });
-      cb.checked = assigned;
-      cb.addEventListener('change', () => {
-        if (cb.checked) {
-          if (!node.classes.includes(cls.name)) node.classes.push(cls.name);
-        } else {
-          node.classes = node.classes.filter((c) => c !== cls.name);
-        }
-        onChange();
-      });
-      label.append(cb, el('span', { text: cls.label || cls.name }));
-      root.append(label);
-    }
-  } else {
-    root.append(el('div', { class: 'muted-note', style: { fontSize: '11px', padding: '2px 0' }, text: 'No classes defined yet' }));
-  }
-
-  // Class management (create / edit / delete)
-
-  root.append(el('div', { class: 'inspector-section' },
-    el('label', { text: 'Manage Classes' }),
-  ));
-
-  const classContainer = el('div', { class: 'inspector-styles' });
-
-  function renderClassList() {
-    classContainer.textContent = '';
-    if (!doc.classes) doc.classes = [];
-
-    for (let ci = 0; ci < doc.classes.length; ci++) {
-      const cls = doc.classes[ci];
-      const row = el('div', { class: 'inspector-css-row', 'data-class-idx': String(ci) });
-
-      // Name input
-      const nameInput = el('input', {
-        type: 'text',
-        class: 'value-input inspector-css-value',
-        value: cls.name || '',
-        placeholder: 'class-name',
-        style: { fontFamily: 'monospace', fontSize: '11px' },
-      });
-      nameInput.addEventListener('input', () => {
-        const oldName = cls.name;
-        const newName = nameInput.value.trim();
-        cls.name = newName;
-        // Update references on nodes
-        if (oldName && newName && oldName !== newName) {
-          for (const n of allNodes(doc.root)) {
-            if (n.classes) n.classes = n.classes.map((c) => c === oldName ? newName : c);
-          }
-        }
-        onChange();
-      });
-
-      row.append(nameInput);
-
-      // Edit styles button
-      const stylesBtn = el('button', {
-        class: 'inspector-css-remove',
-        title: 'Edit class styles',
-        style: { display: 'flex' },
-      }, icon('palette', 14));
-      row.append(stylesBtn);
-
-      // Delete button
-      const delBtn = el('button', {
-        class: 'inspector-css-remove',
-        title: 'Delete class',
-        style: { display: 'flex' },
-      }, icon('close', 14));
-      delBtn.addEventListener('click', () => {
-        if (cls.name && node.classes) {
-          node.classes = node.classes.filter((c) => c !== cls.name);
-        }
-        doc.classes.splice(ci, 1);
-        onChange();
-        renderClassList();
-      });
-      row.append(delBtn);
-
-      classContainer.append(row);
-
-      // Inline style editor (toggle on button click)
-      let styleSection = null;
-      stylesBtn.addEventListener('click', () => {
-        if (styleSection) { styleSection.remove(); styleSection = null; return; }
-        styleSection = el('div', { class: 'inspector-class-style-editor', style: { paddingLeft: '8px', paddingBottom: '4px' } });
-
-        const labelInput = el('input', {
-          type: 'text',
-          class: 'value-input',
-          value: cls.label || '',
-          placeholder: 'Display label (optional)',
-        });
-        labelInput.addEventListener('input', () => { cls.label = labelInput.value; onChange(); renderClassList(); });
-        styleSection.append(el('div', { class: 'inspector-css-row' }, el('span', { class: 'inspector-css-label', text: 'label' }), labelInput));
-
-        const descInput = el('input', {
-          type: 'text',
-          class: 'value-input',
-          value: cls.description || '',
-          placeholder: 'Description (optional)',
-        });
-        descInput.addEventListener('input', () => { cls.description = descInput.value; onChange(); });
-        styleSection.append(el('div', { class: 'inspector-css-row' }, el('span', { class: 'inspector-css-label', text: 'desc' }), descInput));
-
-        // CSS properties for this class
-        if (!cls.styles) cls.styles = {};
-        const keys = Object.keys(cls.styles).filter((k) => cls.styles[k] !== '');
-
-        for (const key of keys) {
-          const val = cls.styles[key];
-          const prop = CSS_PROP_MAP[key];
-          const prow = el('div', { class: 'inspector-css-row' });
-          prow.append(el('span', { class: 'inspector-css-label', text: prop ? prop.label : key }));
-
-          let input;
-          if (prop && prop.type === 'select') {
-            input = el('select', { class: 'value-input inspector-css-value' });
-            for (const opt of prop.options) {
-              const o = el('option', { value: opt, text: opt });
-              if (opt === val) o.selected = true;
-              input.append(o);
-            }
-          } else {
-            input = el('input', { type: 'text', class: 'value-input inspector-css-value', value: val, placeholder: prop?.placeholder || '' });
-          }
-          input.addEventListener('input', () => {
-            if (input.value) cls.styles[key] = input.value;
-            else delete cls.styles[key];
-            onChange();
-          });
-          prow.append(input);
-
-          prow.append(el('button', {
-            class: 'inspector-css-remove',
-            title: 'Remove',
-            onclick: () => { delete cls.styles[key]; onChange(); renderClassList(); stylesBtn.click(); stylesBtn.click(); },
-          }, icon('close', 14)));
-          styleSection.append(prow);
-        }
-
-        // Add style button for this class
-        const addStyleBtn = el('button', { class: 'btn-add-menu' }, icon('add', 14), el('span', { text: 'Add style' }));
-        addStyleBtn.addEventListener('click', () => showClassPropertyPicker(styleSection, addStyleBtn, cls, () => { onChange(); renderClassList(); stylesBtn.click(); stylesBtn.click(); }));
-        styleSection.append(addStyleBtn);
-
-        row.after(styleSection);
-      });
-    }
-
-    // Add class button
-    const addClassBtn = el('button', { class: 'btn-add-menu' }, icon('add', 14), el('span', { text: 'Add class' }));
-    addClassBtn.addEventListener('click', () => {
-      const name = 'class-' + (doc.classes.length + 1);
-      doc.classes.push({ name, label: '', description: '', styles: {} });
-      onChange();
-      renderClassList();
-    });
-    classContainer.append(addClassBtn);
-  }
-
-  renderClassList();
-  root.append(classContainer);
 
   // Delete button
   if (node.id !== 'root') {
@@ -1246,125 +1107,6 @@ function showPropertyPicker(container, addBtn, node, onChange, renderStyles) {
 }
 
 /**
- * Yields all nodes in the tree (depth-first).
- * @param {Object} node
- * @returns {Generator<Object>}
- */
-function* allNodes(node) {
-  yield node;
-  if (node.children) {
-    for (const child of node.children) yield* allNodes(child);
-  }
-}
-
-/**
- * Shows a CSS property picker for editing a reusable class's styles.
- * @param {HTMLElement} container
- * @param {HTMLElement} addBtn
- * @param {Object} cls - Class object with styles.
- * @param {function(): void} onCommit
- * @returns {void}
- */
-function showClassPropertyPicker(container, addBtn, cls, onCommit) {
-  container.querySelector('.css-property-picker')?.remove();
-
-  const usedKeys = new Set(Object.keys(cls.styles || {}));
-  const available = CSS_PROPS.filter((p) => !usedKeys.has(p.key));
-
-  let highlightIdx = -1;
-  let filteredItems = [];
-
-  const picker = el('div', { class: 'css-property-picker' });
-  const search = el('input', {
-    type: 'text',
-    class: 'value-input css-picker-search',
-    placeholder: 'Type to search...',
-  });
-  const list = el('div', { class: 'css-picker-list' });
-
-  function renderList(filter = '') {
-    list.textContent = '';
-    highlightIdx = -1;
-    const lower = filter.toLowerCase();
-    filteredItems = available.filter((p) =>
-      !usedKeys.has(p.key) && (p.label.toLowerCase().includes(lower) || p.key.toLowerCase().includes(lower))
-    );
-
-    for (let i = 0; i < filteredItems.length; i++) {
-      const prop = filteredItems[i];
-      const item = el('div', { class: 'css-picker-item', 'data-idx': i },
-        el('span', { class: 'css-picker-item-name', text: prop.label }),
-        el('span', { class: 'css-picker-item-type muted-note', text: prop.type === 'select' ? 'select' : 'value' }),
-      );
-      item.addEventListener('click', () => pickProperty(prop));
-      item.addEventListener('mouseenter', () => setHighlight(i));
-      list.append(item);
-    }
-
-    if (filteredItems.length === 0) {
-      list.append(el('div', { class: 'css-picker-empty muted-note', text: 'No matching properties' }));
-    } else {
-      setHighlight(0);
-    }
-  }
-
-  function setHighlight(idx) {
-    highlightIdx = idx;
-    list.querySelectorAll('.css-picker-item').forEach((item, i) => {
-      item.classList.toggle('highlighted', i === idx);
-    });
-    const highlighted = list.querySelector('.highlighted');
-    if (highlighted) highlighted.scrollIntoView({ block: 'nearest' });
-  }
-
-  function pickProperty(prop) {
-    const defaultVal = prop.placeholder || (prop.type === 'select' ? prop.options[0] : 'unset');
-    cls.styles[prop.key] = defaultVal;
-    onCommit();
-    picker.remove();
-    document.removeEventListener('mousedown', closeHandler);
-  }
-
-  search.addEventListener('input', () => renderList(search.value));
-  search.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlight(Math.min(highlightIdx + 1, filteredItems.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlight(Math.max(highlightIdx - 1, 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (highlightIdx >= 0 && highlightIdx < filteredItems.length) {
-        pickProperty(filteredItems[highlightIdx]);
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      picker.remove();
-      document.removeEventListener('mousedown', closeHandler);
-    }
-  });
-
-  picker.append(search, list);
-  addBtn.before(picker);
-
-  const pickerRect = picker.getBoundingClientRect();
-  const spaceBelow = window.innerHeight - pickerRect.bottom;
-  if (spaceBelow < 180) picker.classList.add('drop-up');
-
-  search.focus();
-  renderList();
-
-  const closeHandler = (e) => {
-    if (!picker.contains(e.target) && e.target !== addBtn) {
-      picker.remove();
-      document.removeEventListener('mousedown', closeHandler);
-    }
-  };
-  setTimeout(() => document.addEventListener('mousedown', closeHandler), 0);
-}
-
-/**
  * Renders the inspector panel for the <body> element (classes, inline styles, attributes).
  * @param {HTMLElement} root - Container element to render the inspector into.
  * @param {Object|null} doc - Page document with body property.
@@ -1458,7 +1200,27 @@ export function renderBodyInspector(root, doc, onChange) {
 
   function renderAttrs() {
     attrsContainer.textContent = '';
+
+    // Show 'class' attribute at the top (bound to body.classes array)
+    if (!body.classes) body.classes = [];
+    const classRow = el('div', { class: 'inspector-css-row', 'data-attr-key': 'class' });
+    classRow.append(el('span', { class: 'inspector-css-label', text: 'class' }));
+    const classInput = el('input', {
+      type: 'text',
+      class: 'value-input inspector-css-value',
+      value: body.classes.join(' '),
+      placeholder: 'class1 class2',
+    });
+    classInput.addEventListener('focus', () => classInput.select());
+    classInput.addEventListener('input', () => {
+      body.classes = classInput.value.split(/\s+/).filter(Boolean);
+      onChange();
+    });
+    classRow.append(classInput);
+    attrsContainer.append(classRow);
+
     for (const [key, val] of Object.entries(body.attrs || {})) {
+      if (key === 'class') continue; // handled above
       const row = el('div', { class: 'inspector-css-row', 'data-attr-key': key });
       row.append(el('span', { class: 'inspector-css-label', text: key }));
 
@@ -1490,35 +1252,6 @@ export function renderBodyInspector(root, doc, onChange) {
   renderAttrs();
   const attrsSection = makeCollapsibleSection('body-attrs', 'Attributes', attrsContainer);
   root.append(attrsSection);
-
-  // ================== CLASSES ==================
-
-  root.append(el('div', { class: 'inspector-section' },
-    el('label', { text: 'Classes' }),
-  ));
-
-  if (!body.classes) body.classes = [];
-
-  if (doc.classes && doc.classes.length > 0) {
-    for (const cls of doc.classes) {
-      const assigned = body.classes.includes(cls.name);
-      const label = el('label', { class: 'inspector-class-item' });
-      const cb = el('input', { type: 'checkbox' });
-      cb.checked = assigned;
-      cb.addEventListener('change', () => {
-        if (cb.checked) {
-          if (!body.classes.includes(cls.name)) body.classes.push(cls.name);
-        } else {
-          body.classes = body.classes.filter((c) => c !== cls.name);
-        }
-        onChange();
-      });
-      label.append(cb, el('span', { text: cls.label || cls.name }));
-      root.append(label);
-    }
-  } else {
-    root.append(el('div', { class: 'muted-note', style: { fontSize: '11px', padding: '2px 0' }, text: 'No classes defined yet' }));
-  }
 }
 
 /**

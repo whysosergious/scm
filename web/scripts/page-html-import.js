@@ -252,7 +252,12 @@ function walkNode(domNode, ctx) {
   // Text node → span Text node (only meaningful as a child of a box).
   if (domNode.nodeType === Node.TEXT_NODE) {
     const text = domNode.textContent || '';
-    if (!text.trim()) return null; // whitespace between block elements
+    // Preserve whitespace-only nodes that contain spaces — they create
+    // visible inline spacing between adjacent elements (e.g. between spans).
+    if (!text.trim()) {
+      if (/\s/.test(text)) return makeTextNode(' ');
+      return null;
+    }
     return makeTextNode(text);
   }
 
@@ -315,7 +320,12 @@ function walkNode(domNode, ctx) {
     return node;
   }
 
-  // Other void elements in body (br, input, meta, link, etc.) — skip.
+  // <br> → box node preserving the tag name (renders as a line break).
+  if (tag === 'br') {
+    return buildBoxNode('br', el, ctx);
+  }
+
+  // Other void elements in body (input, meta, link, etc.) — skip.
   if (VOID_ELEMENTS.has(tag)) return null;
 
   const isCustom = tag.includes('-');

@@ -31,6 +31,9 @@ const EDITOR_CANVAS_CSS = `
   transition: outline-color 0.1s;
   cursor: pointer;
 }
+svg.canvas-page-node {
+  pointer-events: bounding-box;
+}
 .canvas-page-node.canvas-hovered {
   outline-color: rgba(66, 133, 244, 0.25);
 }
