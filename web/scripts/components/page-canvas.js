@@ -290,6 +290,7 @@ function rebuildIframeContent(doc, selectedNodeId, onSelect, onDrop, onAddNode, 
 <html>
 <head>
 <meta charset="utf-8">
+<base href="/files/${_projectId}/">
 <style>${EDITOR_CANVAS_CSS}</style>
 ${pageCss ? `<style>${pageCss}</style>` : ''}
 </head>
@@ -627,8 +628,9 @@ function applyAttrs(tag, node) {
 
 function resolveImgSrc(src) {
   if (!src) return '';
-  if (src.startsWith('/') || src.startsWith('http') || src.startsWith('data:')) return src;
-  return `/files/${_projectId}/${src}`;
+  // The <base> tag in the iframe resolves relative paths through /files/{projectId}/.
+  // Absolute paths (/...) and data URIs pass through unchanged.
+  return src;
 }
 
 // ================== ELEMENT PICKER ==================
