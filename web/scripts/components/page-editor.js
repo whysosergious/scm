@@ -9,7 +9,7 @@ import { patch, refreshGitStatus, refreshPages, selectedProject, setPageDirty, s
 import { renderPalette } from './page-palette.js';
 import { renderCanvas, setProjectId, isDragging, setShowEmpty, updateSizeLabel } from './page-canvas.js';
 import { getIframeDoc, setZoomScale } from './canvas-iframe.js';
-import { renderInspector, renderHeadInspector } from './page-inspector.js';
+import { renderInspector, renderHeadInspector, renderBodyInspector } from './page-inspector.js';
 import { renderTree } from './page-tree.js';
 import { renderBoxModel, clearBoxModel } from './page-boxmodel.js';
 import { toast, toastError } from './toast.js';
@@ -176,7 +176,7 @@ function renderEditor(root, project) {
     localStorage.setItem(LS_SHOW_EMPTY, showEmpty);
     setShowEmpty(showEmpty);
     renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
-    if (selectedNodeId) {
+    if (selectedNodeId && selectedNodeId !== '__body__') {
       requestAnimationFrame(() => {
         const node = pm.findNode(doc.root, selectedNodeId);
         if (node) renderBoxModel(canvasEl, node, onNodeChange);
@@ -554,10 +554,12 @@ function renderEditor(root, project) {
     }, treeCollapsed);
   }
 
-  /** Re-render the inspector for the current selection (node or head). */
+  /** Re-render the inspector for the current selection (node, head, or body). */
   function refreshInspector() {
     if (selectedHeadIndex !== null) {
       renderHeadInspector(inspectorContent, doc, selectedHeadIndex, onNodeChange, () => onRemoveHead(selectedHeadIndex));
+    } else if (selectedNodeId === '__body__') {
+      renderBodyInspector(inspectorContent, doc, onNodeChange);
     } else {
       renderInspector(inspectorContent, doc, selectedNodeId, onNodeChange);
     }
@@ -575,10 +577,14 @@ function renderEditor(root, project) {
       iframeDoc.querySelectorAll('.canvas-page-node').forEach((n) => {
         n.classList.toggle('selected', n.dataset.nodeId === id);
       });
+      // Body pseudo-node: highlight the <body> element
+      if (iframeDoc.body) {
+        iframeDoc.body.classList.toggle('selected', id === '__body__');
+      }
     }
     // Box model control — defer to let canvas layout settle
     clearBoxModel(canvasEl);
-    if (id) {
+    if (id && id !== '__body__') {
       requestAnimationFrame(() => {
         const node = pm.findNode(doc.root, id);
         if (node && selectedNodeId === id) {
@@ -602,7 +608,7 @@ function renderEditor(root, project) {
     markDirty(true);
     renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
     refreshTree();
-    if (selectedNodeId) {
+    if (selectedNodeId && selectedNodeId !== '__body__') {
       requestAnimationFrame(() => {
         const node = pm.findNode(doc.root, selectedNodeId);
         if (node) renderBoxModel(canvasEl, node, onNodeChange);

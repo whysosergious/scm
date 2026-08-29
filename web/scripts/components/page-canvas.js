@@ -38,6 +38,10 @@ const EDITOR_CANVAS_CSS = `
   outline-color: #1a73e8;
   outline-width: 2px;
 }
+body.selected {
+  outline: 2px solid #1a73e8;
+  outline-offset: -2px;
+}
 .canvas-page-node.dragging {
   opacity: 0.3;
   outline-color: transparent;
@@ -411,6 +415,8 @@ function wireOverlayInteractions(overlay, canvasRoot, doc, onSelect, onDrop, onA
     const node = findPageNode(hit);
     if (node && node.dataset.nodeId) {
       onSelect(node.dataset.nodeId);
+    } else if (hit && hit.tagName === 'BODY') {
+      onSelect('__body__');
     }
   });
 
@@ -737,6 +743,7 @@ function showElementPicker(canvasRoot, mouseEvent, doc, onSelect) {
   const nodes = [];
   const seen = new Set();
   let hit = iframeElementFromPoint(coords.x, coords.y);
+  const iframeDoc = getIframeDoc();
 
   while (hit && hit.classList) {
     if (hit.classList.contains('canvas-page-node') && hit.dataset.nodeId && !seen.has(hit.dataset.nodeId)) {
@@ -747,13 +754,35 @@ function showElementPicker(canvasRoot, mouseEvent, doc, onSelect) {
     hit = hit.parentElement;
   }
 
-  if (nodes.length === 0) return;
+  // Include <body> as the outermost option if we're inside the iframe
+  if (iframeDoc && hit === null) {
+    // Walked up past the document — the body is reachable
+  }
+
+  if (nodes.length === 0 && !(iframeDoc && iframeDoc.body)) return;
 
   const picker = el('div', { class: 'canvas-element-picker' });
   picker.style.top = `${mouseEvent.clientY}px`;
   picker.style.left = `${mouseEvent.clientX}px`;
 
-  for (const { domEl, treeNode } of nodes) {
+  // Add <body> as the outermost entry
+  if (iframeDoc && iframeDoc.body) {
+    const bodyItem = el('div', { class: 'canvas-picker-item' },
+      el('span', { class: 'canvas-picker-badge', text: 'body' }),
+      el('span', { text: '<body>' }),
+    );
+    bodyItem.addEventListener('mouseenter', () => { iframeDoc.body.classList.add('canvas-picker-highlight'); });
+    bodyItem.addEventListener('mouseleave', () => { iframeDoc.body.classList.remove('canvas-picker-highlight'); });
+    bodyItem.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onSelect('__body__');
+      closeElementPicker(canvasRoot);
+    });
+    picker.append(bodyItem);
+  }
+
+  // Add page nodes (innermost first — reverse so outermost is last)
+  for (const { domEl, treeNode } of nodes.reverse()) {
     const element = treeNode.props?.element || treeNode.type;
     const typeBadge = treeNode.type === 'box' ? 'box' : treeNode.type === 'text' ? 'text' : 'img';
     const label = treeNode.type === 'text'
@@ -768,7 +797,6 @@ function showElementPicker(canvasRoot, mouseEvent, doc, onSelect) {
     );
 
     item.addEventListener('mouseenter', () => {
-      const iframeDoc = getIframeDoc();
       if (iframeDoc) iframeDoc.querySelectorAll('.canvas-picker-highlight').forEach((n) => n.classList.remove('canvas-picker-highlight'));
       domEl.classList.add('canvas-picker-highlight');
     });

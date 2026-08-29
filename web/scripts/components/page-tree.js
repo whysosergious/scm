@@ -59,7 +59,8 @@ function getVisibleItems(root) {
       const idx = parseInt(row.dataset.headIndex, 10);
       items.push({ type: 'head', index: idx, el: row });
     } else if (row.dataset.nodeId) {
-      items.push({ type: 'body', nodeId: row.dataset.nodeId, el: row });
+      const isBodyRow = row.classList.contains('tree-item-body');
+      items.push({ type: 'body', nodeId: row.dataset.nodeId, el: row, isBodyRow });
     }
   });
   return items;
@@ -219,6 +220,23 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
   bodySection.append(el('div', { class: 'tree-section-header', text: '«body»' }));
 
   const bodyList = el('div', { class: 'tree-list' });
+
+  // ---- Body pseudo-node (selectable <body> element) ----
+  const BODY_ID = '__body__';
+  const bodyBodyClasses = (doc.body && doc.body.classes) || [];
+  const bodySummary = bodyBodyClasses.length > 0
+    ? `.${bodyBodyClasses.join('.')}`
+    : '';
+  const bodyRow = el('div', {
+    class: 'tree-item tree-item-body' + (selectedNodeId === BODY_ID ? ' selected' : ''),
+    'data-node-id': BODY_ID,
+    style: { paddingLeft: '4px' },
+  });
+  bodyRow.append(el('span', { class: 'tree-chevron tree-chevron--leaf', text: '' }));
+  bodyRow.append(el('span', { class: 'tree-el tree-el--box', text: '<body>' }));
+  if (bodySummary) bodyRow.append(el('span', { class: 'tree-preview', text: bodySummary }));
+  bodyRow.addEventListener('click', () => callbacks.onSelectNode(BODY_ID));
+  bodyList.append(bodyRow);
 
   /**
    * Recursively render a node and its children.
@@ -423,7 +441,7 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       const item = items[focusedIdx];
-      if (item.type === 'body' && item.nodeId !== 'root' && callbacks.onRemoveNode) {
+      if (item.type === 'body' && item.nodeId !== 'root' && item.nodeId !== '__body__' && callbacks.onRemoveNode) {
         callbacks.onRemoveNode(item.nodeId);
       } else if (item.type === 'head' && callbacks.onRemoveHead) {
         callbacks.onRemoveHead(item.index);

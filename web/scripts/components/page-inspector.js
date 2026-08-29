@@ -1339,3 +1339,352 @@ function showClassPropertyPicker(container, addBtn, cls, onCommit) {
   };
   setTimeout(() => document.addEventListener('mousedown', closeHandler), 0);
 }
+
+/**
+ * Renders the inspector panel for the <body> element (classes, inline styles, attributes).
+ * @param {HTMLElement} root - Container element to render the inspector into.
+ * @param {Object|null} doc - Page document with body property.
+ * @param {function(): void} onChange - Callback invoked when any property is modified.
+ * @returns {void}
+ */
+export function renderBodyInspector(root, doc, onChange) {
+  root.textContent = '';
+
+  if (!doc) {
+    root.append(el('div', { class: 'inspector-empty' },
+      el('span', { class: 'muted-note', text: 'No document loaded' }),
+    ));
+    return;
+  }
+
+  if (!doc.body) doc.body = { classes: [], styles: {}, attrs: {} };
+  const body = doc.body;
+
+  root.append(el('div', { class: 'canvas-label mono-label', text: 'INSPECTOR' }));
+
+  // Element label
+  root.append(el('div', { class: 'inspector-section' },
+    el('label', { text: 'Element' }),
+    el('div', { class: 'inspector-type', text: '<body>' }),
+  ));
+
+  // ================== STYLES (collapsible) ==================
+
+  const stylesContainer = el('div', { class: 'inspector-styles' });
+
+  function renderStyles() {
+    stylesContainer.textContent = '';
+    const keys = Object.keys(body.styles || {}).filter((k) => body.styles[k] !== '');
+
+    for (const key of keys) {
+      const val = body.styles[key];
+      const prop = CSS_PROP_MAP[key];
+      const label = prop ? prop.label : key;
+
+      const row = el('div', { class: 'inspector-css-row', 'data-style-key': key });
+      row.append(el('span', { class: 'inspector-css-label', text: label }));
+
+      let input;
+      if (prop && prop.type === 'select') {
+        input = el('select', { class: 'value-input inspector-css-value' });
+        for (const opt of prop.options) {
+          const o = el('option', { value: opt, text: opt });
+          if (opt === val) o.selected = true;
+          input.append(o);
+        }
+      } else {
+        const ph = prop ? prop.placeholder : '';
+        input = el('input', {
+          type: 'text',
+          class: 'value-input inspector-css-value',
+          value: val,
+          placeholder: ph,
+        });
+        input.addEventListener('focus', () => input.select());
+      }
+
+      input.addEventListener('input', () => {
+        if (input.value) body.styles[key] = input.value;
+        else delete body.styles[key];
+        onChange();
+      });
+
+      row.append(input);
+
+      row.append(el('button', {
+        class: 'inspector-css-remove',
+        title: 'Remove',
+        onclick: () => { delete body.styles[key]; onChange(); renderStyles(); },
+      }, icon('close', 14)));
+      stylesContainer.append(row);
+    }
+
+    const addBtn = el('button', { class: 'btn-add-menu' }, icon('add', 14), el('span', { text: 'Add style' }));
+    addBtn.addEventListener('click', () => showBodyStylePicker(stylesContainer, addBtn, body, onChange, renderStyles));
+    stylesContainer.append(addBtn);
+  }
+
+  renderStyles();
+  const stylesSection = makeCollapsibleSection('body-styles', 'Styles', stylesContainer);
+  root.append(stylesSection);
+
+  // ================== ATTRIBUTES (collapsible) ==================
+
+  const attrsContainer = el('div', { class: 'inspector-styles' });
+
+  function renderAttrs() {
+    attrsContainer.textContent = '';
+    for (const [key, val] of Object.entries(body.attrs || {})) {
+      const row = el('div', { class: 'inspector-css-row', 'data-attr-key': key });
+      row.append(el('span', { class: 'inspector-css-label', text: key }));
+
+      const input = el('input', {
+        type: 'text',
+        class: 'value-input inspector-css-value',
+        value: String(val ?? ''),
+      });
+      input.addEventListener('focus', () => input.select());
+      input.addEventListener('input', () => {
+        body.attrs[key] = input.value;
+        onChange();
+      });
+      row.append(input);
+
+      row.append(el('button', {
+        class: 'inspector-css-remove',
+        title: 'Remove',
+        onclick: () => { delete body.attrs[key]; onChange(); renderAttrs(); },
+      }, icon('close', 14)));
+      attrsContainer.append(row);
+    }
+
+    const addBtn = el('button', { class: 'btn-add-menu' }, icon('add', 14), el('span', { text: 'Add attribute' }));
+    addBtn.addEventListener('click', () => showBodyAttrPicker(attrsContainer, addBtn, body, onChange, renderAttrs));
+    attrsContainer.append(addBtn);
+  }
+
+  renderAttrs();
+  const attrsSection = makeCollapsibleSection('body-attrs', 'Attributes', attrsContainer);
+  root.append(attrsSection);
+
+  // ================== CLASSES ==================
+
+  root.append(el('div', { class: 'inspector-section' },
+    el('label', { text: 'Classes' }),
+  ));
+
+  if (!body.classes) body.classes = [];
+
+  if (doc.classes && doc.classes.length > 0) {
+    for (const cls of doc.classes) {
+      const assigned = body.classes.includes(cls.name);
+      const label = el('label', { class: 'inspector-class-item' });
+      const cb = el('input', { type: 'checkbox' });
+      cb.checked = assigned;
+      cb.addEventListener('change', () => {
+        if (cb.checked) {
+          if (!body.classes.includes(cls.name)) body.classes.push(cls.name);
+        } else {
+          body.classes = body.classes.filter((c) => c !== cls.name);
+        }
+        onChange();
+      });
+      label.append(cb, el('span', { text: cls.label || cls.name }));
+      root.append(label);
+    }
+  } else {
+    root.append(el('div', { class: 'muted-note', style: { fontSize: '11px', padding: '2px 0' }, text: 'No classes defined yet' }));
+  }
+}
+
+/**
+ * Shows a CSS property picker for the body element's styles.
+ */
+function showBodyStylePicker(container, addBtn, body, onChange, renderStyles) {
+  container.querySelector('.css-property-picker')?.remove();
+  const usedKeys = new Set(Object.keys(body.styles || {}));
+  const available = CSS_PROPS.filter((p) => !usedKeys.has(p.key));
+
+  let highlightIdx = -1;
+  let filteredItems = [];
+
+  const picker = el('div', { class: 'css-property-picker' });
+  const search = el('input', {
+    type: 'text',
+    class: 'value-input css-picker-search',
+    placeholder: 'Type to search...',
+  });
+  const list = el('div', { class: 'css-picker-list' });
+
+  function renderList(filter = '') {
+    list.textContent = '';
+    highlightIdx = -1;
+    const lower = filter.toLowerCase();
+    filteredItems = available.filter((p) =>
+      !usedKeys.has(p.key) && (p.label.toLowerCase().includes(lower) || p.key.toLowerCase().includes(lower))
+    );
+    for (let i = 0; i < filteredItems.length; i++) {
+      const prop = filteredItems[i];
+      const item = el('div', { class: 'css-picker-item', 'data-idx': i },
+        el('span', { class: 'css-picker-item-name', text: prop.label }),
+        el('span', { class: 'css-picker-item-type muted-note', text: prop.type === 'select' ? 'select' : 'value' }),
+      );
+      item.addEventListener('click', () => pickProperty(prop));
+      item.addEventListener('mouseenter', () => setHighlight(i));
+      list.append(item);
+    }
+    if (filteredItems.length === 0) {
+      list.append(el('div', { class: 'css-picker-empty muted-note', text: 'No matching properties' }));
+    } else {
+      setHighlight(0);
+    }
+  }
+
+  function setHighlight(idx) {
+    highlightIdx = idx;
+    list.querySelectorAll('.css-picker-item').forEach((item, i) => {
+      item.classList.toggle('highlighted', i === idx);
+    });
+    const highlighted = list.querySelector('.highlighted');
+    if (highlighted) highlighted.scrollIntoView({ block: 'nearest' });
+  }
+
+  function pickProperty(prop) {
+    const defaultVal = prop.placeholder || (prop.type === 'select' ? prop.options[0] : 'unset');
+    body.styles[prop.key] = defaultVal;
+    onChange();
+    picker.remove();
+    document.removeEventListener('mousedown', closeHandler);
+    renderStyles();
+    requestAnimationFrame(() => {
+      const row = container.querySelector(`[data-style-key="${CSS.escape(prop.key)}"]`);
+      const input = row?.querySelector('.value-input, select');
+      if (input) input.focus();
+    });
+  }
+
+  search.addEventListener('input', () => renderList(search.value));
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(Math.min(highlightIdx + 1, filteredItems.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(Math.max(highlightIdx - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (highlightIdx >= 0) pickProperty(filteredItems[highlightIdx]); }
+    else if (e.key === 'Escape') { e.preventDefault(); picker.remove(); document.removeEventListener('mousedown', closeHandler); }
+  });
+
+  picker.append(search, list);
+  addBtn.before(picker);
+  const pickerRect = picker.getBoundingClientRect();
+  if (window.innerHeight - pickerRect.bottom < 180) picker.classList.add('drop-up');
+  search.focus();
+  renderList();
+
+  const closeHandler = (e) => {
+    if (!picker.contains(e.target) && e.target !== addBtn) {
+      picker.remove();
+      document.removeEventListener('mousedown', closeHandler);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', closeHandler), 0);
+}
+
+/**
+ * Shows an attribute picker for the body element.
+ */
+function showBodyAttrPicker(container, addBtn, body, onChange, renderAttrs) {
+  container.querySelector('.css-property-picker')?.remove();
+  const usedKeys = new Set(Object.keys(body.attrs || {}));
+  const VALID_NAME = /^[a-zA-Z_][a-zA-Z0-9_:.-]*$/;
+
+  let highlightIdx = -1;
+  let filteredItems = [];
+
+  const picker = el('div', { class: 'css-property-picker' });
+  const search = el('input', {
+    type: 'text',
+    class: 'value-input css-picker-search',
+    placeholder: 'Search or type name...',
+  });
+  const list = el('div', { class: 'css-picker-list' });
+
+  function renderList(filter = '') {
+    list.textContent = '';
+    highlightIdx = -1;
+    const lower = filter.toLowerCase();
+    filteredItems = ATTR_DEFS.filter((d) =>
+      !usedKeys.has(d.key) && (d.label.toLowerCase().includes(lower) || d.key.toLowerCase().includes(lower))
+    );
+    for (let i = 0; i < filteredItems.length; i++) {
+      const def = filteredItems[i];
+      const item = el('div', { class: 'css-picker-item', 'data-idx': i },
+        el('span', { class: 'css-picker-item-name', text: def.label }),
+        el('span', { class: 'css-picker-item-type muted-note', text: def.type === 'bool' ? 'flag' : 'value' }),
+      );
+      item.addEventListener('click', () => commitKey(def.key));
+      item.addEventListener('mouseenter', () => setHighlight(i));
+      list.append(item);
+    }
+    // Custom attribute entry
+    const trimmed = filter.trim();
+    if (trimmed && VALID_NAME.test(trimmed) && !usedKeys.has(trimmed) && !filteredItems.some((d) => d.key === trimmed)) {
+      const idx = filteredItems.length;
+      filteredItems.push({ key: trimmed, custom: true });
+      const item = el('div', { class: 'css-picker-item', 'data-idx': idx },
+        el('span', { class: 'css-picker-item-name', text: `Add "${trimmed}"` }),
+        el('span', { class: 'css-picker-item-type muted-note', text: 'custom' }),
+      );
+      item.addEventListener('click', () => commitKey(trimmed));
+      item.addEventListener('mouseenter', () => setHighlight(idx));
+      list.append(item);
+    }
+    if (filteredItems.length === 0) {
+      list.append(el('div', { class: 'css-picker-empty muted-note', text: 'No matching attributes' }));
+    } else {
+      setHighlight(0);
+    }
+  }
+
+  function setHighlight(idx) {
+    highlightIdx = idx;
+    list.querySelectorAll('.css-picker-item').forEach((item, i) => {
+      item.classList.toggle('highlighted', i === idx);
+    });
+    const highlighted = list.querySelector('.highlighted');
+    if (highlighted) highlighted.scrollIntoView({ block: 'nearest' });
+  }
+
+  function commitKey(key) {
+    body.attrs[key] = '';
+    onChange();
+    picker.remove();
+    document.removeEventListener('mousedown', closeHandler);
+    renderAttrs();
+    requestAnimationFrame(() => {
+      const row = container.querySelector(`[data-attr-key="${CSS.escape(key)}"]`);
+      const input = row?.querySelector('input[type="text"], select');
+      if (input) input.focus();
+    });
+  }
+
+  search.addEventListener('input', () => renderList(search.value));
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight(Math.min(highlightIdx + 1, filteredItems.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight(Math.max(highlightIdx - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (highlightIdx >= 0) commitKey(filteredItems[highlightIdx].key); }
+    else if (e.key === 'Escape') { e.preventDefault(); picker.remove(); document.removeEventListener('mousedown', closeHandler); }
+  });
+
+  picker.append(search, list);
+  addBtn.before(picker);
+  const pickerRect = picker.getBoundingClientRect();
+  if (window.innerHeight - pickerRect.bottom < 180) picker.classList.add('drop-up');
+  search.focus();
+  renderList();
+
+  const closeHandler = (e) => {
+    if (!picker.contains(e.target) && e.target !== addBtn) {
+      picker.remove();
+      document.removeEventListener('mousedown', closeHandler);
+    }
+  };
+  setTimeout(() => document.addEventListener('mousedown', closeHandler), 0);
+}

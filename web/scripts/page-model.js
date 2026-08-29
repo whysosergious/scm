@@ -37,6 +37,7 @@
  * @property {HeadElement[]} head - Head elements array.
  * @property {Array<{name: string, label?: string, description?: string, styles: Object<string, string>}>} classes - Reusable CSS classes.
  * @property {PageNode} root - Root page node.
+ * @property {{ classes?: string[], styles?: Object<string, string>, attrs?: Object<string, string> }} [body] - Body element attributes.
  */
 
 let nextId = 1;
