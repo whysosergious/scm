@@ -1657,7 +1657,32 @@ textarea.value-input:focus {
   border: 1px solid #111;
 }
 
-/* Page layer: the actual rendered page (white page) */
+/* Iframe canvas — replaces the shadow-DOM page layer */
+.canvas-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: none;
+  pointer-events: none;
+  overflow: hidden;
+  background: #fff;
+}
+
+/* Transparent hit-test overlay — captures all pointer events for the parent */
+.canvas-hit-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  cursor: default;
+}
+.canvas-hit-overlay.drag-active {
+  cursor: copy;
+}
+
+/* Legacy page layer (kept for reference, no longer used) */
 .canvas-page-layer {
   position: relative;
   min-height: 200px;

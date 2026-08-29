@@ -1,10 +1,10 @@
 // Transform control frame for selected canvas element.
-// Always visible when an element is selected — handles width/height via drag.
-// Inspector renders dimension/padding/margin scrubbers.
-// Units are preserved during drag — the numeric part is updated, unit stays.
+// Frame is rendered in the parent document inside .canvas-zoom-wrap, positioned
+// over the iframe using coordinate mapping.  Handles use pointer events on the
+// parent window — no cross-frame capture needed.
 
 import { el } from '../dom.js';
-import { canvasPageShadow } from './page-canvas.js';
+import { getIframe, getIframeDoc, getZoom } from './canvas-iframe.js';
 
 /** @type {number} Pixels of value change per pixel of pointer drag. */
 const STEP = 1;
@@ -37,7 +37,6 @@ export function parsePx(val) {
 
 /**
  * Applies a pixel delta to a CSS value, preserving the original unit.
- * The delta is treated as a change in the numeric part of the value.
  * @param {string} origVal - Original CSS value (e.g. '50%')
  * @param {number} delta - Change in pixels (applied as numeric delta)
  * @returns {string} Updated CSS value with same unit
@@ -49,10 +48,9 @@ function applyDelta(origVal, delta) {
 }
 
 /**
- * Applies a pixel delta to a CSS value for side properties (padding-top, margin-left, etc.).
+ * Applies a pixel delta for side properties (padding-top, margin-left, etc.).
  * For % units, converts the pixel delta to percentage of the parent dimension.
- * For em/rem, converts the pixel delta to em/rem.
- * For px or no unit, applies directly.
+ * For em/rem, converts to em/rem.
  * @param {HTMLElement} contextEl - Element for context (parent size, font size)
  * @param {string} origVal - Original CSS value
  * @param {number} delta - Change in pixels
@@ -75,7 +73,6 @@ function applySideDelta(contextEl, origVal, delta) {
   }
 
   const next = Math.max(0, num + convertedDelta);
-  // Keep a reasonable number of decimal places
   const formatted = unit === 'px' || unit === ''
     ? Math.round(next)
     : parseFloat(next.toFixed(2));
@@ -86,7 +83,10 @@ function applySideDelta(contextEl, origVal, delta) {
 
 /**
  * Renders the transform control frame around the selected element.
- * @param {HTMLElement} canvasEl - The canvas container element.
+ * The frame is appended to the zoom-wrap (parent document) and positioned
+ * over the iframe using the target element's layout coordinates.
+ *
+ * @param {HTMLElement} canvasEl - The canvas container element (.page-canvas).
  * @param {Object|null} node - The page node, or null to clear.
  * @param {function(): void} onChange - Callback when a value is modified.
  * @returns {void}
@@ -95,19 +95,24 @@ export function renderBoxModel(canvasEl, node, onChange) {
   clearBoxModel(canvasEl);
   if (!node) return;
 
-  const shadow = canvasPageShadow(canvasEl);
-  if (!shadow) return;
-  const targetEl = shadow.querySelector(`[data-node-id="${node.id}"]`);
+  const iframeDoc = getIframeDoc();
+  if (!iframeDoc) return;
+  const iframe = getIframe();
+  if (!iframe) return;
+
+  const targetEl = iframeDoc.querySelector(`[data-node-id="${node.id}"]`);
   if (!targetEl) return;
 
-  const pl = canvasEl.querySelector('.canvas-page-layer');
-  if (!pl) return;
+  const zoomWrap = canvasEl.querySelector('.canvas-zoom-wrap');
+  if (!zoomWrap) return;
 
-  // Offset of target relative to page-layer
+  const zoom = getZoom();
+
+  // Target element's layout coordinates relative to the iframe's body
   let top = 0;
   let left = 0;
   let walk = targetEl;
-  while (walk && walk !== pl) {
+  while (walk && walk !== iframeDoc.body) {
     top += walk.offsetTop;
     left += walk.offsetLeft;
     walk = walk.offsetParent;
@@ -116,28 +121,30 @@ export function renderBoxModel(canvasEl, node, onChange) {
   const tWidth = targetEl.offsetWidth;
   const tHeight = targetEl.offsetHeight;
 
-  renderTransformFrame(pl, targetEl, top, left, tWidth, tHeight, node, onChange);
+  renderTransformFrame(zoomWrap, top, left, tWidth, tHeight, zoom, targetEl, node, onChange);
 }
 
 /**
  * Renders a transform control frame with 8 draggable resize handles.
+ * Appended to zoomWrap so it scales with the zoom transform alongside the iframe.
  */
-function renderTransformFrame(pl, targetEl, top, left, w, h, node, onChange) {
+function renderTransformFrame(zoomWrap, top, left, w, h, zoom, targetEl, node, onChange) {
   const frame = el('div', { class: 'bm-frame' });
-  frame.style.top = `${top - 1}px`;
-  frame.style.left = `${left - 1}px`;
-  frame.style.width = `${w + 2}px`;
-  frame.style.height = `${h + 2}px`;
+  // Position in zoom-scaled coordinates (matches the iframe's visual layout)
+  frame.style.top = `${top * zoom - 1}px`;
+  frame.style.left = `${left * zoom - 1}px`;
+  frame.style.width = `${w * zoom + 2}px`;
+  frame.style.height = `${h * zoom + 2}px`;
 
   const handles = [
     { name: 'nw', cursor: 'nw-resize', top: -4, left: -4 },
-    { name: 'n', cursor: 'n-resize', top: -4, left: w / 2 - 4 },
-    { name: 'ne', cursor: 'ne-resize', top: -4, left: w - 4 },
-    { name: 'e', cursor: 'e-resize', top: h / 2 - 4, left: w - 4 },
-    { name: 'se', cursor: 'se-resize', top: h - 4, left: w - 4 },
-    { name: 's', cursor: 's-resize', top: h - 4, left: w / 2 - 4 },
-    { name: 'sw', cursor: 'sw-resize', top: h - 4, left: -4 },
-    { name: 'w', cursor: 'w-resize', top: h / 2 - 4, left: -4 },
+    { name: 'n',  cursor: 'n-resize',  top: -4, left: w * zoom / 2 - 4 },
+    { name: 'ne', cursor: 'ne-resize', top: -4, left: w * zoom - 4 },
+    { name: 'e',  cursor: 'e-resize',  top: h * zoom / 2 - 4, left: w * zoom - 4 },
+    { name: 'se', cursor: 'se-resize', top: h * zoom - 4, left: w * zoom - 4 },
+    { name: 's',  cursor: 's-resize',  top: h * zoom - 4, left: w * zoom / 2 - 4 },
+    { name: 'sw', cursor: 'sw-resize', top: h * zoom - 4, left: -4 },
+    { name: 'w',  cursor: 'w-resize',  top: h * zoom / 2 - 4, left: -4 },
   ];
 
   for (const hd of handles) {
@@ -160,11 +167,9 @@ function renderTransformFrame(pl, targetEl, top, left, w, h, node, onChange) {
       const invertX = hd.name.includes('w') ? -1 : 1;
       const invertY = hd.name.includes('n') ? -1 : 1;
 
-      // Remember original values for width/height
       const origW = node.styles?.width || '';
       const origH = node.styles?.height || '';
 
-      handle.setPointerCapture(e.pointerId);
       document.body.style.cursor = hd.cursor;
       document.body.style.userSelect = 'none';
 
@@ -182,10 +187,32 @@ function renderTransformFrame(pl, targetEl, top, left, w, h, node, onChange) {
         }
 
         if (onChange) onChange();
+
+        // Re-query the target element after onChange (iframe may have re-rendered)
+        const iframeDoc = getIframeDoc();
+        if (iframeDoc) {
+          const freshEl = iframeDoc.querySelector(`[data-node-id="${node.id}"]`);
+          if (freshEl) {
+            // Update frame position to match the (potentially) changed element
+            if (zoomWrap) {
+              let newTop = 0, newLeft = 0;
+              let w2 = freshEl;
+              while (w2 && w2 !== iframeDoc.body) {
+                newTop += w2.offsetTop;
+                newLeft += w2.offsetLeft;
+                w2 = w2.offsetParent;
+              }
+              const z = getZoom();
+              frame.style.top = `${newTop * z - 1}px`;
+              frame.style.left = `${newLeft * z - 1}px`;
+              frame.style.width = `${freshEl.offsetWidth * z + 2}px`;
+              frame.style.height = `${freshEl.offsetHeight * z + 2}px`;
+            }
+          }
+        }
       }
 
       function onUp() {
-        handle.releasePointerCapture(e.pointerId);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
         window.removeEventListener('pointermove', onMove);
@@ -199,17 +226,17 @@ function renderTransformFrame(pl, targetEl, top, left, w, h, node, onChange) {
     frame.append(handle);
   }
 
-   pl.shadowRoot.append(frame);
- }
+  zoomWrap.append(frame);
+}
 
 /**
  * Removes the transform frame from the canvas.
  * @param {HTMLElement} canvasEl
  */
 export function clearBoxModel(canvasEl) {
-  const shadow = canvasPageShadow(canvasEl);
-  if (!shadow) return;
-  shadow.querySelectorAll('.bm-frame').forEach((n) => n.remove());
+  const zoomWrap = canvasEl.querySelector('.canvas-zoom-wrap');
+  if (!zoomWrap) return;
+  zoomWrap.querySelectorAll('.bm-frame').forEach((n) => n.remove());
 }
 
 /**
@@ -218,9 +245,9 @@ export function clearBoxModel(canvasEl) {
  * @param {boolean} visible
  */
 export function setFrameVisible(canvasEl, visible) {
-  const shadow = canvasPageShadow(canvasEl);
-  if (!shadow) return;
-  shadow.querySelectorAll('.bm-frame').forEach((n) => {
+  const zoomWrap = canvasEl.querySelector('.canvas-zoom-wrap');
+  if (!zoomWrap) return;
+  zoomWrap.querySelectorAll('.bm-frame').forEach((n) => {
     n.style.display = visible ? '' : 'none';
   });
 }
@@ -243,9 +270,6 @@ export function makeDragScrub(element, onChange, vertical = false) {
 
     function onMove(ev) {
       const current = vertical ? ev.clientY : ev.clientX;
-      // Delta is measured from the drag START, not the last move, so the
-      // value accumulates correctly against the original base captured by
-      // the caller (applyDelta(origVal, delta)).
       const delta = Math.round((current - startAxis) * STEP);
       if (delta !== last) {
         last = delta;
@@ -278,14 +302,11 @@ export function makeDragScrub(element, onChange, vertical = false) {
 export function renderDimensionsPanel(container, node, onChange) {
   const grid = el('div', { class: 'bm-dim-grid' });
 
-  // Width
   const wGroup = el('div', { class: 'bm-dim-group' });
   const wLabel = el('span', { class: 'bm-dim-label', text: 'W' });
   const wValue = el('span', { class: 'bm-dim-value', text: node.styles?.width || '—' });
   wGroup.append(wLabel, wValue);
-
   const origW = node.styles?.width || '';
-
   makeDragScrub(wGroup, (delta) => {
     if (!node.styles) node.styles = {};
     node.styles.width = applyDelta(origW, delta);
@@ -293,14 +314,11 @@ export function renderDimensionsPanel(container, node, onChange) {
     onChange();
   });
 
-  // Height
   const hGroup = el('div', { class: 'bm-dim-group' });
   const hLabel = el('span', { class: 'bm-dim-label', text: 'H' });
   const hValue = el('span', { class: 'bm-dim-value', text: node.styles?.height || '—' });
   hGroup.append(hLabel, hValue);
-
   const origH = node.styles?.height || '';
-
   makeDragScrub(hGroup, (delta) => {
     if (!node.styles) node.styles = {};
     node.styles.height = applyDelta(origH, delta);
@@ -326,11 +344,8 @@ export function renderSidesPanel(container, node, mode, onChange) {
   const sides = ['top', 'right', 'bottom', 'left'];
   const styleKey = (side) => `${prop}-${side}`;
 
-  // Remember original values for each side
   const origVals = {};
-  for (const side of sides) {
-    origVals[side] = node.styles?.[styleKey(side)] || '0';
-  }
+  for (const side of sides) origVals[side] = node.styles?.[styleKey(side)] || '0';
 
   const zones = {};
   for (const side of sides) {
@@ -355,6 +370,5 @@ export function renderSidesPanel(container, node, mode, onChange) {
 
   const center = el('div', { class: 'bm-center' }, el('span', { text: 'content' }));
   box.append(center);
-
   container.append(box);
 }

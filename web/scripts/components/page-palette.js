@@ -2,8 +2,12 @@
 // Grouped base components with draggable items and add buttons.
 // Item types may carry a concrete element as "type:element" (e.g. "text:a");
 // page-editor.js splits the composite before calling pm.addNode.
+//
+// Drag uses pointer events (not the HTML DnD API) so dragging works across
+// the iframe canvas boundary.  The drag state is managed by canvas-iframe.js.
 
 import { el, icon } from '../dom.js';
+import { startDragTracking } from './canvas-iframe.js';
 
 /**
  * @typedef {Object} ComponentDef
@@ -31,7 +35,7 @@ const COMPONENT_GROUPS = [
   {
     title: 'CONTENT',
     items: [
-      { type: 'text', label: 'Text', icon: 'text_fields', desc: 'Text content (p, h1, h2, span…)' },
+      { type: 'text', label: 'Text', icon: 'text_fields', text: 'Text content (p, h1, h2, span…)' },
       { type: 'text:a', label: 'Link', icon: 'link', desc: 'Hyperlink — set href under Attributes' },
       { type: 'text:button', label: 'Button', icon: 'smart_button', desc: 'Clickable button' },
     ],
@@ -71,11 +75,11 @@ function createSection(root, title, defaultOpen = true) {
 
 /**
  * Creates a palette item element.
+ * Uses pointer events for drag initiation (cross-frame compatible).
  */
 function createItem(comp, onAdd) {
   const item = el('div', {
     class: 'palette-item',
-    draggable: 'true',
     title: comp.desc,
     'data-component-type': comp.type,
   },
@@ -83,12 +87,17 @@ function createItem(comp, onAdd) {
     el('span', { class: 'palette-label', text: comp.label }),
   );
 
-  item.addEventListener('dragstart', (e) => {
-    e.dataTransfer.setData('application/x-scm-component', comp.type);
-    e.dataTransfer.effectAllowed = 'copy';
+  // Pointer-event-based drag initiation (replaces HTML DnD API)
+  item.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    // Start tracking — the canvas overlay's pointermove will promote to a drag
+    // once the pointer crosses the threshold.
+    startDragTracking(comp.type, null, e.clientX, e.clientY);
   });
 
-  item.addEventListener('click', () => {
+  // Click-to-add (fires when no drag occurred)
+  item.addEventListener('click', (e) => {
+    // Only fire if the pointer didn't move (not a drag)
     onAdd(comp.type);
   });
 

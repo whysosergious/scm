@@ -7,7 +7,8 @@ import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
 import { patch, refreshGitStatus, refreshPages, selectedProject, setPageDirty, state } from '../state.js';
 import { renderPalette } from './page-palette.js';
-import { renderCanvas, setProjectId, isDragging, setShowEmpty, updateSizeLabel, canvasPageShadow } from './page-canvas.js';
+import { renderCanvas, setProjectId, isDragging, setShowEmpty, updateSizeLabel } from './page-canvas.js';
+import { getIframeDoc, setZoomScale } from './canvas-iframe.js';
 import { renderInspector, renderHeadInspector } from './page-inspector.js';
 import { renderTree } from './page-tree.js';
 import { renderBoxModel, clearBoxModel } from './page-boxmodel.js';
@@ -366,6 +367,7 @@ function renderEditor(root, project) {
   let zoomLevel = 100;
 
   function applyZoom() {
+    setZoomScale(zoomLevel / 100);
     const zoomWrap = canvasEl.querySelector('.canvas-zoom-wrap');
     const zoomPct = canvasEl.querySelector('.canvas-zoom-pct');
     if (zoomWrap) zoomWrap.style.transform = `scale(${zoomLevel / 100})`;
@@ -565,10 +567,10 @@ function renderEditor(root, project) {
     selectedHeadIndex = null;
     refreshInspector();
     refreshTree();
-    // Update canvas selection
-    const shadow = canvasPageShadow(canvasEl);
-    if (shadow) {
-      shadow.querySelectorAll('.canvas-page-node').forEach((n) => {
+    // Update canvas selection (inside the iframe)
+    const iframeDoc = getIframeDoc();
+    if (iframeDoc) {
+      iframeDoc.querySelectorAll('.canvas-page-node').forEach((n) => {
         n.classList.toggle('selected', n.dataset.nodeId === id);
       });
     }
