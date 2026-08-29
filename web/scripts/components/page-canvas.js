@@ -61,10 +61,6 @@ const EDITOR_CANVAS_CSS = `
   white-space: nowrap;
   z-index: 4;
 }
-.canvas-page-node[data-node-type='box'] {
-  outline: 1px dashed rgba(66, 133, 244, 0.25);
-  outline-offset: 2px;
-}
 .canvas-page-node.drop-target {
   outline: 2px solid #1a73e8;
   outline-offset: 2px;
@@ -298,16 +294,13 @@ function rebuildIframeContent(doc, selectedNodeId, onSelect, onDrop, onAddNode, 
 ${pageCss ? `<style>${pageCss}</style>` : ''}
 </head>
 <body style="margin:0;padding:0;">
-<div data-role="page-root" class="canvas-page-root"></div>
 </body>
 </html>`);
   iframeDoc.close();
 
-  // Render page nodes into the root container
-  const rootContainer = iframeDoc.querySelector('[data-role="page-root"]');
-  if (!rootContainer || !doc.root) return;
-
-  renderNode(rootContainer, doc.root, selectedNodeId, onSelect, onDrop, onAddNode);
+  // Render page nodes directly into the iframe body
+  if (!doc.root) return;
+  renderNode(iframeDoc.body, doc.root, selectedNodeId, onSelect, onDrop, onAddNode);
 }
 
 // ================== OVERLAY INTERACTIONS ==================
@@ -649,15 +642,15 @@ function showElementPicker(canvasRoot, mouseEvent, doc, onSelect) {
 
   const nodes = [];
   const seen = new Set();
-  let el = iframeElementFromPoint(coords.x, coords.y);
+  let hit = iframeElementFromPoint(coords.x, coords.y);
 
-  while (el && el.classList) {
-    if (el.classList.contains('canvas-page-node') && el.dataset.nodeId && !seen.has(el.dataset.nodeId)) {
-      seen.add(el.dataset.nodeId);
-      const treeNode = pm.findNode(doc.root, el.dataset.nodeId);
-      if (treeNode) nodes.push({ domEl: el, treeNode });
+  while (hit && hit.classList) {
+    if (hit.classList.contains('canvas-page-node') && hit.dataset.nodeId && !seen.has(hit.dataset.nodeId)) {
+      seen.add(hit.dataset.nodeId);
+      const treeNode = pm.findNode(doc.root, hit.dataset.nodeId);
+      if (treeNode) nodes.push({ domEl: hit, treeNode });
     }
-    el = el.parentElement;
+    hit = hit.parentElement;
   }
 
   if (nodes.length === 0) return;
