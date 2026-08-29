@@ -228,14 +228,13 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
   function renderNode(node, depth) {
     const hasChildren = node.children && node.children.length > 0;
     const isCollapsed = collapsed.has(node.id);
-    const isRoot = node === doc.root;
 
     const row = el('div', {
-      class: 'tree-item' + (selectedNodeId === node.id ? ' selected' : '') + (isRoot ? ' tree-root' : ' tree-draggable'),
+      class: 'tree-item' + (selectedNodeId === node.id ? ' selected' : '') + ' tree-draggable',
       'data-node-id': node.id,
       style: { paddingLeft: `${4 + depth * 7}px` },
     });
-    if (!isRoot) row.setAttribute('draggable', 'true');
+    row.setAttribute('draggable', 'true');
 
     // Chevron
     if (hasChildren) {
@@ -272,8 +271,8 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
     }
     if (preview) row.append(el('span', { class: 'tree-preview', text: preview }));
 
-    // Add child button (visible on hover, only for box nodes that are not root)
-    if (node.type === 'box' && !isRoot) {
+    // Add child button (visible on hover, only for box nodes)
+    if (node.type === 'box') {
       const addChildBtn = el('button', {
         class: 'tree-add-child',
         title: 'Add child',
@@ -285,49 +284,45 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
       row.append(addChildBtn);
     }
 
-    // Delete button (not for root)
-    if (!isRoot) {
-      const delBtn = el('button', {
-        class: 'tree-delete',
-        title: 'Remove',
-        onclick(e) {
-          e.stopPropagation();
-          if (callbacks.onRemoveNode) callbacks.onRemoveNode(node.id);
-        },
-      }, '×');
-      row.append(delBtn);
-    }
+    // Delete button
+    const delBtn = el('button', {
+      class: 'tree-delete',
+      title: 'Remove',
+      onclick(e) {
+        e.stopPropagation();
+        if (callbacks.onRemoveNode) callbacks.onRemoveNode(node.id);
+      },
+    }, '×');
+    row.append(delBtn);
 
     row.addEventListener('click', () => callbacks.onSelectNode(node.id));
 
     // Drag-and-drop reordering
-    if (!isRoot) {
-      row.addEventListener('dragstart', (e) => {
-        e.dataTransfer.setData(TREE_DND_TYPE, node.id);
-        e.dataTransfer.effectAllowed = 'move';
-        row.classList.add('dragging');
-      });
-      row.addEventListener('dragend', () => {
-        row.classList.remove('dragging');
-        clearDropIndicator(row);
-      });
-      row.addEventListener('dragover', (e) => {
-        if (!e.dataTransfer.types.includes(TREE_DND_TYPE)) return;
-        e.preventDefault();
-        showDropIndicator(row, computeDropPosition(row, node, e.clientY));
-      });
-      row.addEventListener('dragleave', (e) => {
-        if (!row.contains(e.relatedTarget)) clearDropIndicator(row);
-      });
-      row.addEventListener('drop', (e) => {
-        e.preventDefault();
-        clearDropIndicator(row);
-        const draggedId = e.dataTransfer.getData(TREE_DND_TYPE);
-        if (!draggedId || draggedId === node.id) return;
-        const position = computeDropPosition(row, node, e.clientY);
-        if (callbacks.onReorder) callbacks.onReorder(draggedId, node.id, position);
-      });
-    }
+    row.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData(TREE_DND_TYPE, node.id);
+      e.dataTransfer.effectAllowed = 'move';
+      row.classList.add('dragging');
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      clearDropIndicator(row);
+    });
+    row.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer.types.includes(TREE_DND_TYPE)) return;
+      e.preventDefault();
+      showDropIndicator(row, computeDropPosition(row, node, e.clientY));
+    });
+    row.addEventListener('dragleave', (e) => {
+      if (!row.contains(e.relatedTarget)) clearDropIndicator(row);
+    });
+    row.addEventListener('drop', (e) => {
+      e.preventDefault();
+      clearDropIndicator(row);
+      const draggedId = e.dataTransfer.getData(TREE_DND_TYPE);
+      if (!draggedId || draggedId === node.id) return;
+      const position = computeDropPosition(row, node, e.clientY);
+      if (callbacks.onReorder) callbacks.onReorder(draggedId, node.id, position);
+    });
 
     bodyList.append(row);
 
@@ -342,7 +337,13 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
     if (selectedNodeId && doc.root) {
       autoExpandFor(doc.root, selectedNodeId);
     }
-    renderNode(doc.root, 0);
+    // Render root's children directly — the root node is a transparent model
+    // container (not a real DOM element), so it should not appear in the tree.
+    if (doc.root.children) {
+      for (const child of doc.root.children) {
+        renderNode(child, 0);
+      }
+    }
   }
 
   bodySection.append(bodyList);
