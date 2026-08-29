@@ -536,7 +536,10 @@ function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
   applyClasses(tag, node);
   applyAttrs(tag, node);
 
-  if (node.children && node.children.length > 0) {
+  if (node.props && node.props.innerHTML) {
+    // SVG (or raw HTML content): render innerHTML directly into the element.
+    tag.innerHTML = node.props.innerHTML;
+  } else if (node.children && node.children.length > 0) {
     for (const child of node.children) renderNode(tag, child, selectedId, onSelect, onDrop, onAddNode);
   } else if (_showEmpty) {
     tag.classList.add('canvas-empty-box');

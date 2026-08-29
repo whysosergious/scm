@@ -202,7 +202,9 @@ export function openPageImportModal({ projectId, onImport } = {}) {
   function showPreview({ doc, report }) {
     const stats = report.stats;
     const lines = [];
-    lines.push(`${stats.total} elements: ${stats.boxes} boxes, ${stats.texts} texts, ${stats.images} images`);
+    const parts = [`${stats.boxes} boxes`, `${stats.texts} texts`, `${stats.images} images`];
+    if (stats.svgs) parts.push(`${stats.svgs} SVGs`);
+    lines.push(`${stats.total} elements: ${parts.join(', ')}`);
     if (report.warnings.length > 0) {
       lines.push(`${report.warnings.length} warnings:`);
       for (const w of report.warnings.slice(0, 10)) {

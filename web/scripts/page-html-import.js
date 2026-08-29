@@ -56,36 +56,22 @@ const VOID_ELEMENTS = new Set([
   'link', 'meta', 'param', 'source', 'track', 'wbr',
 ]);
 
-/** Attributes worth preserving on nodes. */
-const ATTR_MAP = {
-  'href': 'href', 'target': 'target', 'rel': 'rel',
-  'src': 'src', 'title': 'title',
-  'controls': 'controls', 'autoplay': 'autoplay', 'loop': 'loop',
-  'muted': 'muted', 'poster': 'poster', 'preload': 'preload',
-  'width': 'width', 'height': 'height', 'loading': 'loading',
-  'disabled': 'disabled', 'type': 'type', 'placeholder': 'placeholder',
-  'action': 'action', 'method': 'method',
-  'colspan': 'colspan', 'rowspan': 'rowspan',
-  'srcset': 'srcset', 'sizes': 'sizes',
-  'download': 'download', 'hreflang': 'hreflang',
-  'role': 'role', 'tabindex': 'tabindex',
-  'viewBox': 'viewBox', 'preserveAspectRatio': 'preserveAspectRatio',
-  'd': 'd', 'cx': 'cx', 'cy': 'cy', 'r': 'r',
-  'x': 'x', 'y': 'y', 'x1': 'x1', 'y1': 'y1', 'x2': 'x2', 'y2': 'y2',
-  'points': 'points', 'rx': 'rx', 'ry': 'ry',
-  'transform': 'transform', 'fill': 'fill', 'stroke': 'stroke',
-  'stroke-width': 'stroke-width', 'stroke-linecap': 'stroke-linecap',
-  'stroke-linejoin': 'stroke-linejoin', 'fill-opacity': 'fill-opacity',
-  'stroke-opacity': 'stroke-opacity', 'opacity': 'opacity',
-  'gradientUnits': 'gradientUnits', 'gradientTransform': 'gradientTransform',
-  'offset': 'offset', 'stop-color': 'stop-color', 'stop-opacity': 'stop-opacity',
-  'fx': 'fx', 'fy': 'fy', 'spreadMethod': 'spreadMethod',
-  'markerWidth': 'markerWidth', 'markerHeight': 'markerHeight',
-  'refX': 'refX', 'refY': 'refY', 'markerUnits': 'markerUnits',
-  'patternUnits': 'patternUnits', 'patternContentUnits': 'patternContentUnits',
-  'clipPathUnit': 'clipPathUnit', 'maskUnits': 'maskUnits',
-  'text-anchor': 'text-anchor', 'dominant-baseline': 'dominant-baseline',
-};
+/**
+ * Extract all attributes from an element into a {name: value} map.
+ * Preserves every attribute (class, style, id, data-*, aria-*, etc.)
+ * except those in the skip set which are handled separately.
+ * @param {Element} el
+ * @param {Set<string>} skip - Lowercased attribute names to skip.
+ * @returns {Object<string,string>}
+ */
+function extractAttrs(el, skip) {
+  const out = {};
+  for (const attr of el.attributes) {
+    if (skip.has(attr.name)) continue;
+    out[attr.name] = attr.value;
+  }
+  return out;
+}
 
 // ===================== STYLE / CLASS HELPERS =====================
 
@@ -113,21 +99,7 @@ function parseInlineStyle(styleText) {
   return styles;
 }
 
-/**
- * Extract mapped attributes from an element into a {name: value} map.
- * @param {Element} el
- * @param {Set<string>} skip - Lowercased attribute names to skip (e.g. handled separately).
- * @returns {Object<string,string>}
- */
-function extractAttrs(el, skip) {
-  const out = {};
-  for (const [htmlAttr, nodeAttr] of Object.entries(ATTR_MAP)) {
-    if (skip.has(htmlAttr)) continue;
-    const val = el.getAttribute(htmlAttr);
-    if (val !== null && val !== '') out[nodeAttr] = val;
-  }
-  return out;
-}
+
 
 // ===================== HEAD EXTRACTION =====================
 
@@ -279,6 +251,10 @@ function walkNode(domNode, ctx) {
 
   if (el.getAttribute('aria-hidden') === 'true') return null;
 
+  // Inner SVG elements (path, circle, rect, g, etc.) — skip; they are part of
+  // the parent <svg>'s innerHTML which we capture as raw content.
+  if (SVG_ELEMENTS.has(tag) && tag !== 'svg') return null;
+
   // <script> found while walking body → preserve in head, report, skip.
   if (tag === 'script') {
     const src = el.getAttribute('src');
@@ -329,16 +305,17 @@ function walkNode(domNode, ctx) {
   if (VOID_ELEMENTS.has(tag)) return null;
 
   const isCustom = tag.includes('-');
+  const isSvg = tag === 'svg';
   const resolved = resolveBoxElement(tag, el);
 
   // Unknown inline element without a known block role — skip and report.
-  if (!resolved && !isCustom && !TEXT_ELEMENTS.has(tag)) {
+  if (!resolved && !isCustom && !isSvg && !TEXT_ELEMENTS.has(tag)) {
     ctx.report.warnings.push(`[skipped element] <${tag}>`);
     return null;
   }
 
   const hasElementChildren = el.children.length > 0;
-  const isLeafText = TEXT_ELEMENTS.has(tag) && !isCustom && !hasElementChildren;
+  const isLeafText = TEXT_ELEMENTS.has(tag) && !isCustom && !isSvg && !hasElementChildren;
 
   let type;
   let nodeElement;
@@ -347,8 +324,8 @@ function walkNode(domNode, ctx) {
     nodeElement = tag;
   } else {
     type = 'box';
-    if (isCustom) {
-      nodeElement = 'div';
+    if (isCustom || isSvg) {
+      nodeElement = tag; // preserve original tag name (custom element or svg)
     } else if (resolved) {
       nodeElement = resolved;
     } else {
@@ -358,7 +335,6 @@ function walkNode(domNode, ctx) {
   }
 
   const node = buildNode(type, nodeElement, el, ctx);
-  if (isCustom) node.attrs['data-ce'] = tag;
   ctx.idMap.set(node.id, true);
 
   if (type === 'text') {
@@ -366,6 +342,9 @@ function walkNode(domNode, ctx) {
     if (el.children.length > 0) {
       ctx.report.warnings.push(`[lossy text] <${tag}> contains nested elements (text is a leaf; nested markup flattened into value)`);
     }
+  } else if (isSvg) {
+    // SVG: store innerHTML as raw content; children are NOT walked as page nodes.
+    node.props.innerHTML = el.innerHTML;
   } else {
     // Box: walk children. Direct text runs become span Text nodes.
     for (const child of Array.from(el.childNodes)) {
@@ -546,12 +525,15 @@ export async function importHtmlUrl(url) {
  * @returns {{total:number,boxes:number,texts:number,images:number}}
  */
 function countNodes(node) {
-  const stats = { total: 0, boxes: 0, texts: 0, images: 0 };
+  const stats = { total: 0, boxes: 0, texts: 0, images: 0, svgs: 0 };
   walk(node);
   function walk(n) {
     if (!n) return;
     stats.total++;
-    if (n.type === 'box') stats.boxes++;
+    if (n.type === 'box') {
+      stats.boxes++;
+      if (n.props && n.props.element === 'svg') stats.svgs++;
+    }
     else if (n.type === 'text') stats.texts++;
     else if (n.type === 'image') stats.images++;
     if (n.children) n.children.forEach(walk);

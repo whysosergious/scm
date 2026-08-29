@@ -506,7 +506,7 @@ function validateNode(node, seenIds, errors) {
 
   if (node.type === 'box') {
     const el = (node.props && node.props.element) || 'div';
-    if (!BOX_ELEMENTS.includes(el)) {
+    if (!BOX_ELEMENTS.includes(el) && !el.includes('-')) {
       errors.push(`Box '${node.id}' has unsupported element '${el}'`);
     }
     if (node.children) {

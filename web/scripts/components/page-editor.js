@@ -153,6 +153,7 @@ function renderEditor(root, project) {
   const saveBtn = el('button', { class: 'menu-item menu-item-primary', disabled: true }, icon('save', 18), el('span', { text: 'Save' }));
   const generateBtn = el('button', { class: 'menu-item' }, icon('code', 18), el('span', { text: 'Generate' }));
   const previewBtn = el('button', { class: 'menu-item' }, icon('open_in_new', 18), el('span', { text: 'Preview' }));
+  const importBtn = el('button', { class: 'menu-item' }, icon('upload', 18), el('span', { text: 'Import HTML' }));
   const dirtyIndicator = el('span', { class: 'muted-note', text: '', style: { display: 'none' } });
 
   // Persisted menu settings
@@ -201,6 +202,7 @@ function renderEditor(root, project) {
     saveBtn,
     previewBtn,
     generateBtn,
+    importBtn,
     el('div', { class: 'menu-divider' }),
     el('div', { class: 'menu-section-title', text: 'VIEW' }),
     emptyToggle,
@@ -750,6 +752,23 @@ function renderEditor(root, project) {
   previewBtn.addEventListener('click', () => {
     const url = api.previewPageUrl(project.id, name);
     window.open(url, '_blank');
+  });
+
+  importBtn.addEventListener('click', async () => {
+    closeMenu();
+    const { openPageImportModal } = await import('./page-import-modal.js');
+    openPageImportModal({
+      projectId: project.id,
+      onImport({ doc: importedDoc }) {
+        doc = importedDoc;
+        dirty = true;
+        renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+        wireCanvasControls();
+        refreshTree();
+        refreshInspector();
+        toast('Page imported');
+      },
+    });
   });
 
   // Initial render

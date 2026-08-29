@@ -46,6 +46,7 @@ const COMPONENT_GROUPS = [
       { type: 'image', label: 'Image', icon: 'image', desc: 'Image from media directory' },
       { type: 'box:video', label: 'Video', icon: 'videocam', desc: 'Video player — set src under Attributes' },
       { type: 'box:audio', label: 'Audio', icon: 'audiotrack', desc: 'Audio player — set src under Attributes' },
+      { type: 'box:svg', label: 'SVG', icon: 'draw', desc: 'Inline SVG vector graphic' },
     ],
   },
   {
