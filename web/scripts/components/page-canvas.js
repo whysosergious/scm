@@ -368,12 +368,18 @@ function wireOverlayInteractions(overlay, canvasRoot, doc, onSelect, onDrop, onA
   let hoveredNode = null;
   let dragStarted = false;
 
-  // ── Forward wheel events to the scroll container so the canvas can scroll ──
+  // ── Forward wheel events to the iframe document so it can scroll ──
   overlay.addEventListener('wheel', (e) => {
-    const scrollContainer = canvasRoot.querySelector('.canvas-viewport-scroll');
-    if (scrollContainer) {
-      scrollContainer.scrollLeft += e.deltaX;
-      scrollContainer.scrollTop += e.deltaY;
+    const iframeDoc = getIframeDoc();
+    if (iframeDoc) {
+      // Scroll the iframe's own document (body or documentElement)
+      const scrollEl = iframeDoc.documentElement.scrollHeight > iframeDoc.documentElement.clientHeight
+        ? iframeDoc.documentElement
+        : iframeDoc.body;
+      if (scrollEl) {
+        scrollEl.scrollTop += e.deltaY;
+        scrollEl.scrollLeft += e.deltaX;
+      }
     }
     e.preventDefault();
   }, { passive: false });
@@ -543,9 +549,9 @@ function findDropTarget(dragEvent) {
 
       const rect = el.getBoundingClientRect();
       const iframeRect = getIframe().getBoundingClientRect();
-      const zoom = getZoom();
-      // Convert cursor to iframe-layout coords relative to this element
-      const relY = (dragEvent.clientY - iframeRect.top) / zoom - (rect.top - iframeRect.top);
+      // Both rect and iframeRect are in viewport pixels (post-transform), so
+      // subtract directly — no zoom division needed for relative positioning.
+      const relY = (dragEvent.clientY - iframeRect.top) - (rect.top - iframeRect.top);
       const height = rect.height;
       const zone = height * 0.25;
 
@@ -591,7 +597,10 @@ function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
   }
 
   const doc = parent.ownerDocument;
-  const tag = doc.createElement(element);
+  const isSvg = element === 'svg';
+  const tag = isSvg
+    ? doc.createElementNS('http://www.w3.org/2000/svg', element)
+    : doc.createElement(element);
   tag.dataset.nodeId = node.id;
   tag.dataset.nodeType = 'box';
   tag.dataset.element = element;
@@ -601,8 +610,29 @@ function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
   applyAttrs(tag, node);
 
   if (node.props && node.props.innerHTML) {
-    // SVG (or raw HTML content): render innerHTML directly into the element.
-    tag.innerHTML = node.props.innerHTML;
+    // SVG or raw HTML content.
+    // innerHTML may contain the full <svg>…</svg> markup (from XMLSerializer)
+    // or just inner children.  If it starts with <svg, parse via a temporary
+    // container so the HTML parser handles the SVG namespace switch correctly;
+    // otherwise set innerHTML directly (legacy or non-SVG raw content).
+    const raw = node.props.innerHTML;
+    if (isSvg && /^\s*<svg[\s>]/i.test(raw)) {
+      const tmp = doc.createElement('div');
+      tmp.innerHTML = raw;
+      const svg = tmp.querySelector('svg');
+      if (svg) {
+        // Move all attributes from the parsed SVG onto our namespace element
+        for (const attr of Array.from(svg.attributes)) {
+          tag.setAttribute(attr.name, attr.value);
+        }
+        // Re-apply node attrs (may override source attrs)
+        applyAttrs(tag, node);
+        // Copy parsed children into our SVG element
+        while (svg.firstChild) tag.appendChild(svg.firstChild);
+      }
+    } else {
+      tag.innerHTML = raw;
+    }
   } else if (node.children && node.children.length > 0) {
     for (const child of node.children) renderNode(tag, child, selectedId, onSelect, onDrop, onAddNode);
   } else if (_showEmpty) {

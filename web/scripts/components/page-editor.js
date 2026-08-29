@@ -633,7 +633,12 @@ function renderEditor(root, project) {
     const sep = typeSpec.indexOf(':');
     const type = sep === -1 ? typeSpec : typeSpec.slice(0, sep);
     const element = sep === -1 ? undefined : typeSpec.slice(sep + 1);
-    const node = pm.addNode(doc.root, parentId, type, index, {}, element);
+    // SVG gets a default template so it renders as a visible placeholder
+    const props = {};
+    if (element === 'svg') {
+      props.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect x="20" y="20" width="160" height="160" rx="8" fill="none" stroke="#999" stroke-width="2"/></svg>';
+    }
+    const node = pm.addNode(doc.root, parentId, type, index, props, element);
     if (node) {
       markDirty(true);
       clearBoxModel(canvasEl);
@@ -667,7 +672,7 @@ function renderEditor(root, project) {
 
   /** Remove a body node by id (called from tree keyboard Delete). */
   function onRemoveNode(nodeId) {
-    if (!doc || nodeId === 'root') return;
+    if (!doc || !doc.root || nodeId === doc.root.id) return;
     if (confirm(`Delete node "${nodeId}"?`)) {
       pm.removeNode(doc.root, nodeId);
       if (selectedNodeId === nodeId) selectedNodeId = null;

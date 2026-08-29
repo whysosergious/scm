@@ -357,8 +357,12 @@ function walkNode(domNode, ctx) {
       ctx.report.warnings.push(`[lossy text] <${tag}> contains nested elements (text is a leaf; nested markup flattened into value)`);
     }
   } else if (isSvg) {
-    // SVG: store innerHTML as raw content; children are NOT walked as page nodes.
-    node.props.innerHTML = el.innerHTML;
+    // SVG: serialize with XMLSerializer to preserve namespaces, self-closing
+    // tags, and attribute casing correctly (innerHTML may mangle SVG in some
+    // browsers).  Store the FULL <svg>…</svg> markup so the canvas can inject
+    // it into an SVG-namespace element without loss.
+    const serializer = new XMLSerializer();
+    node.props.innerHTML = serializer.serializeToString(el);
   } else {
     // Box: walk children. Direct text runs become span Text nodes.
     for (const child of Array.from(el.childNodes)) {

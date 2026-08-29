@@ -510,7 +510,14 @@ function validateNode(node, seenIds, errors) {
 
   if (node.type === 'box') {
     const el = (node.props && node.props.element) || 'div';
-    if (!BOX_ELEMENTS.includes(el) && !el.includes('-')) {
+    const isSvg = el === 'svg' || el === 'circle' || el === 'rect' || el === 'path'
+      || el === 'g' || el === 'line' || el === 'polygon' || el === 'polyline'
+      || el === 'ellipse' || el === 'defs' || el === 'use' || el === 'text'
+      || el === 'tspan' || el === 'symbol' || el === 'linearGradient'
+      || el === 'radialGradient' || el === 'stop' || el === 'clipPath'
+      || el === 'mask' || el === 'pattern' || el === 'image'
+      || el === 'filter' || el === 'marker' || el === 'foreignObject';
+    if (!BOX_ELEMENTS.includes(el) && !el.includes('-') && !isSvg) {
       errors.push(`Box '${node.id}' has unsupported element '${el}'`);
     }
     if (node.children) {

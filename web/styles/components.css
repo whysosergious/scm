@@ -1664,7 +1664,7 @@ textarea.value-input:focus {
   height: 100%;
   border: none;
   pointer-events: none;
-  overflow: hidden;
+  overflow: auto;
   background: #fff;
 }
 

@@ -47,7 +47,7 @@ export function initIframe(container) {
   // No src/srcdoc — the iframe loads about:blank and we write the full document
   // via document.write() in page-canvas.js rebuildIframeContent().
   iframe.style.cssText =
-    'width:100%;height:100%;border:none;display:block;pointer-events:none;overflow:hidden;background:#fff;';
+    'width:100%;height:100%;border:none;display:block;pointer-events:none;overflow:auto;background:#fff;';
   container.appendChild(iframe);
   _iframe = iframe;
   _iframeDoc = null;

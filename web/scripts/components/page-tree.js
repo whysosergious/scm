@@ -228,7 +228,7 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
   function renderNode(node, depth) {
     const hasChildren = node.children && node.children.length > 0;
     const isCollapsed = collapsed.has(node.id);
-    const isRoot = node.id === 'root';
+    const isRoot = node === doc.root;
 
     const row = el('div', {
       class: 'tree-item' + (selectedNodeId === node.id ? ' selected' : '') + (isRoot ? ' tree-root' : ' tree-draggable'),
