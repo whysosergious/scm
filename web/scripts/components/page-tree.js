@@ -289,8 +289,9 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
     }
     if (preview) row.append(el('span', { class: 'tree-preview', text: preview }));
 
-    // Add child button (visible on hover, only for box nodes)
-    if (node.type === 'box') {
+    // Add child button (visible on hover, only for box nodes that aren't leaf containers)
+    const isLeafContainer = node.type === 'box' && ['svg', 'video', 'audio'].includes(element);
+    if (node.type === 'box' && !isLeafContainer) {
       const addChildBtn = el('button', {
         class: 'tree-add-child',
         title: 'Add child',

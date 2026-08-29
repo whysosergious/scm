@@ -69,8 +69,8 @@ export const MEDIA_ELEMENTS = ['video', 'audio'];
 export function canNest(parentType, parentElement, childType, childElement) {
   const parentEl = parentElement || '';
 
-  // Media players are leaf nodes — nothing nests inside video/audio
-  if (parentType === 'box' && (parentEl === 'video' || parentEl === 'audio')) {
+  // SVG and Media players are leaf nodes — nothing nests inside svg/video/audio
+  if (parentType === 'box' && (parentEl === 'svg' || parentEl === 'video' || parentEl === 'audio')) {
     return false;
   }
 
@@ -126,9 +126,9 @@ export function createNode(type, props = {}, element) {
     children: [],
   };
   if (type === 'box') {
-    node.props.element = element || 'div';
+    node.props.element = element || props.element || 'div';
   } else if (type === 'text') {
-    node.props.element = element || 'p';
+    node.props.element = element || props.element || 'p';
     node.props.value = props.value || '';
   } else if (type === 'image') {
     node.props.src = props.src || '';

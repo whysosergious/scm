@@ -222,22 +222,46 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
 
   // Element selector (Box and Text)
   if (node.type === 'box' || node.type === 'text') {
-    const elements = node.type === 'box' ? pm.BOX_ELEMENTS : pm.TEXT_ELEMENTS;
-    const currentEl = (node.props && node.props.element) || elements[0];
-    const select = el('select', { class: 'value-input' });
-    for (const e of elements) {
-      const opt = el('option', { value: e, text: e });
-      if (e === currentEl) opt.selected = true;
-      select.append(opt);
+    const isSvg = (node.props && node.props.element) === 'svg';
+    if (isSvg) {
+      root.append(el('div', { class: 'inspector-section' },
+        el('label', { text: 'Element' }),
+        el('div', { class: 'inspector-type', text: '<svg>' }),
+      ));
+
+      const ta = el('textarea', {
+        class: 'value-input',
+        rows: '12',
+        placeholder: '<svg ...>...</svg>',
+        style: { fontFamily: 'monospace', fontSize: '11px', whiteSpace: 'pre', overflow: 'auto' },
+      });
+      ta.value = (node.props && node.props.innerHTML) || '';
+      ta.addEventListener('input', () => {
+        node.props.innerHTML = ta.value;
+        onChange();
+      });
+      root.append(el('div', { class: 'inspector-section' },
+        el('label', { text: 'SVG Markup' }),
+        ta,
+      ));
+    } else {
+      const elements = node.type === 'box' ? pm.BOX_ELEMENTS : pm.TEXT_ELEMENTS;
+      const currentEl = (node.props && node.props.element) || elements[0];
+      const select = el('select', { class: 'value-input' });
+      for (const e of elements) {
+        const opt = el('option', { value: e, text: e });
+        if (e === currentEl) opt.selected = true;
+        select.append(opt);
+      }
+      select.addEventListener('change', () => {
+        node.props.element = select.value;
+        onChange();
+      });
+      root.append(el('div', { class: 'inspector-section' },
+        el('label', { text: 'Element' }),
+        select,
+      ));
     }
-    select.addEventListener('change', () => {
-      node.props.element = select.value;
-      onChange();
-    });
-    root.append(el('div', { class: 'inspector-section' },
-      el('label', { text: 'Element' }),
-      select,
-    ));
   }
 
   // Text content
