@@ -81,13 +81,13 @@ export function parentToIframeCoords(e) {
   const iframeRect = _iframe.getBoundingClientRect();
   const zoom = getZoom();
 
-  // Offset from iframe visual edge (post-transform pixels)
-  const offsetX = e.clientX - iframeRect.left;
-  const offsetY = e.clientY - iframeRect.top;
-
-  // Convert to iframe layout pixels (undo zoom)
-  const x = offsetX / zoom + (_iframeDoc.documentElement.scrollLeft || _iframeDoc.body.scrollLeft || 0);
-  const y = offsetY / zoom + (_iframeDoc.documentElement.scrollTop || _iframeDoc.body.scrollTop || 0);
+  // Offset from iframe visual edge (post-transform pixels), converted to
+  // iframe layout pixels (undo zoom).  These are viewport-relative coords
+  // suitable for elementFromPoint() — do NOT add scrollTop/scrollLeft here
+  // because elementFromPoint takes coords relative to the visible viewport,
+  // not the scrolled document.
+  const x = (e.clientX - iframeRect.left) / zoom;
+  const y = (e.clientY - iframeRect.top) / zoom;
 
   return { x, y };
 }
