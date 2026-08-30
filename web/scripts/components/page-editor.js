@@ -7,7 +7,7 @@ import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
 import { patch, refreshGitStatus, refreshPages, selectedProject, setPageDirty, state } from '../state.js';
 import { renderPalette } from './page-palette.js';
-import { renderCanvas, setProjectId, isDragging, setShowEmpty, updateSizeLabel, patchNode, patchBodyAttrs, updateIframeContent } from './page-canvas.js';
+import { renderCanvas, setProjectId, isDragging, setShowEmpty, updateSizeLabel, patchNode, patchBodyAttrs, updateIframeContent, scrollCanvasToNode } from './page-canvas.js';
 import { getIframeDoc, setZoomScale } from './canvas-iframe.js';
 import { renderInspector, renderHeadInspector, renderBodyInspector } from './page-inspector.js';
 import { renderTree } from './page-tree.js';
@@ -619,6 +619,10 @@ function renderEditor(root, project) {
       if (iframeDoc.body) {
         iframeDoc.body.classList.toggle('selected', id === '__body__');
       }
+    }
+    // Scroll canvas viewport to show the selected node
+    if (id) {
+      requestAnimationFrame(() => scrollCanvasToNode(canvasEl, id));
     }
     // Box model control — defer to let canvas layout settle
     clearBoxModel(canvasEl);

@@ -276,6 +276,40 @@ export function renderCanvas(root, doc, selectedNodeId, onSelect, onDrop, onAddN
   updateSizeLabel(root);
 }
 
+// ================== SCROLL CANVAS TO NODE ==================
+
+/**
+ * Scroll the canvas viewport so the given node is centered in view (if not
+ * already visible).  Accounts for zoom scale.
+ *
+ * @param {HTMLElement} canvasRoot - .page-canvas container.
+ * @param {string} nodeId - Node ID to scroll to.
+ */
+export function scrollCanvasToNode(canvasRoot, nodeId) {
+  if (!nodeId || nodeId === '__body__') return;
+  const iframeDoc = getIframeDoc();
+  if (!iframeDoc) return;
+  const dom = iframeDoc.querySelector(`[data-nid="${CSS.escape(nodeId)}"]`);
+  if (!dom) return;
+
+  const scroll = canvasRoot.querySelector('.canvas-viewport-scroll');
+  if (!scroll) return;
+
+  const zoom = getZoom();
+  const nodeRect = dom.getBoundingClientRect();
+  const scrollRect = scroll.getBoundingClientRect();
+
+  // Node visual bounds relative to the scroll container's content area
+  const nodeTop = nodeRect.top - scrollRect.top + scroll.scrollTop;
+  const nodeBot = nodeRect.bottom - scrollRect.top + scroll.scrollTop;
+  const nodeMid = (nodeTop + nodeBot) / 2;
+  const viewMid = scroll.scrollTop + scroll.clientHeight / 2;
+
+  if (nodeTop >= scroll.scrollTop && nodeBot <= scroll.scrollTop + scroll.clientHeight) return;
+
+  scroll.scrollTo({ top: nodeMid - scroll.clientHeight / 2, behavior: 'smooth' });
+}
+
 // ================== INCREMENTAL UPDATE ==================
 
 /**
