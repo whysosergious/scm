@@ -7,7 +7,7 @@ import * as pm from '../page-model.js';
 import { el, icon } from '../dom.js';
 import { patch, refreshGitStatus, refreshPages, selectedProject, setPageDirty, state } from '../state.js';
 import { renderPalette } from './page-palette.js';
-import { renderCanvas, setProjectId, isDragging, setShowEmpty, updateSizeLabel, patchNode, patchBodyAttrs } from './page-canvas.js';
+import { renderCanvas, setProjectId, isDragging, setShowEmpty, updateSizeLabel, patchNode, patchBodyAttrs, updateIframeContent } from './page-canvas.js';
 import { getIframeDoc, setZoomScale } from './canvas-iframe.js';
 import { renderInspector, renderHeadInspector, renderBodyInspector } from './page-inspector.js';
 import { renderTree } from './page-tree.js';
@@ -159,8 +159,10 @@ function renderEditor(root, project) {
   // Persisted menu settings
   const LS_SHOW_EMPTY = 'scm-show-empty';
   const LS_CONFIRM_CLOSE = 'scm-confirm-close';
+  const LS_SCROLL_TO_SEL = 'scm-tw-scroll-to-selection';
   let showEmpty = localStorage.getItem(LS_SHOW_EMPTY) !== 'false';
   let confirmClose = localStorage.getItem(LS_CONFIRM_CLOSE) !== 'false';
+  let scrollToSelection = localStorage.getItem(LS_SCROLL_TO_SEL) !== 'false';
 
   setShowEmpty(showEmpty);
 
@@ -203,6 +205,18 @@ function renderEditor(root, project) {
     localStorage.setItem(LS_CONFIRM_CLOSE, confirmClose);
   });
 
+  // OPTIONS: auto-scroll tree to selection when selecting on canvas
+  const scrollCheck = el('span', { class: 'menu-check-box' + (scrollToSelection ? ' checked' : '') }, icon('check', 16));
+  const scrollToggle = el('div', { class: 'menu-item menu-check', title: 'Scroll tree to selected element' },
+    scrollCheck,
+    el('span', { text: 'tw: scroll to selection' }),
+  );
+  scrollToggle.addEventListener('click', () => {
+    scrollToSelection = !scrollToSelection;
+    scrollCheck.classList.toggle('checked', scrollToSelection);
+    localStorage.setItem(LS_SCROLL_TO_SEL, scrollToSelection);
+  });
+
   // Burger menu
   const burgerBtn = el('button', { class: 'btn-icon burger', title: 'Menu' }, icon('menu', 20));
   const pageMenu = el('div', { class: 'menu-dropdown page-menu', style: { display: 'none' } },
@@ -216,6 +230,7 @@ function renderEditor(root, project) {
     el('div', { class: 'menu-divider' }),
     el('div', { class: 'menu-section-title', text: 'OPTIONS' }),
     confirmToggle,
+    scrollToggle,
   );
 
   function closeMenu() { pageMenu.style.display = 'none'; }
@@ -246,6 +261,9 @@ function renderEditor(root, project) {
       burgerBtn,
       el('span', { class: 'mono-title', text: name }),
       dirtyIndicator,
+    ),
+    el('div', { class: 'page-toolbar-right' },
+      el('button', { class: 'btn-icon', title: 'Reload page', onclick() { renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode); } }, icon('refresh', 20)),
     ),
     pageMenu,
   );
@@ -578,6 +596,19 @@ function renderEditor(root, project) {
     selectedHeadIndex = null;
     refreshInspector();
     refreshTree();
+    // Scroll tree to selected row if the tree panel is active and setting enabled
+    if (scrollToSelection && activeTab === 'tree' && id) {
+      requestAnimationFrame(() => {
+        const row = treeContent.querySelector(`.tree-item[data-nid="${CSS.escape(id)}"]`);
+        if (row) {
+          const r = row.getBoundingClientRect();
+          const c = tabContent.getBoundingClientRect();
+          if (r.top < c.top || r.bottom > c.bottom) {
+            row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }
+        }
+      });
+    }
     // Update canvas selection (inside the iframe)
     const iframeDoc = getIframeDoc();
     if (iframeDoc) {
@@ -644,7 +675,12 @@ function renderEditor(root, project) {
     if (changed) {
       markDirty(true);
       clearBoxModel(canvasEl);
-      renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+      const incremental = updateIframeContent(doc, selectedNodeId, selectNode, onDrop, onAddNode, 'move', {
+        nodeId, targetParentId, targetIndex: index,
+      });
+      if (!incremental) {
+        renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+      }
       refreshTree();
       if (selectedNodeId) {
         requestAnimationFrame(() => {
@@ -657,11 +693,9 @@ function renderEditor(root, project) {
 
   /** Handle adding a new body node. */
   function onAddNode(parentId, index, typeSpec) {
-    // Palette items may pass "type:element" composites (e.g. "text:a", "box:video")
     const sep = typeSpec.indexOf(':');
     const type = sep === -1 ? typeSpec : typeSpec.slice(0, sep);
     const element = sep === -1 ? undefined : typeSpec.slice(sep + 1);
-    // SVG gets a default template so it renders as a visible placeholder
     const props = {};
     if (element === 'svg') {
       props.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect x="20" y="20" width="160" height="160" rx="8" fill="none" stroke="#999" stroke-width="2"/></svg>';
@@ -670,7 +704,12 @@ function renderEditor(root, project) {
     if (node) {
       markDirty(true);
       clearBoxModel(canvasEl);
-      renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+      const incremental = updateIframeContent(doc, selectedNodeId, selectNode, onDrop, onAddNode, 'add', {
+        parentId, index, nodeId: node.id,
+      });
+      if (!incremental) {
+        renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+      }
       refreshTree();
       requestAnimationFrame(() => selectNode(node.id));
     }
@@ -705,7 +744,7 @@ function renderEditor(root, project) {
       pm.removeNode(doc.root, nodeId);
       if (selectedNodeId === nodeId) selectedNodeId = null;
       markDirty(true);
-      renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+      updateIframeContent(doc, selectedNodeId, selectNode, onDrop, onAddNode, 'remove', { nodeId });
       refreshTree();
       refreshInspector();
     }
@@ -752,7 +791,12 @@ function renderEditor(root, project) {
       return;
     }
     markDirty(true);
-    renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+    const incremental = updateIframeContent(doc, selectedNodeId, selectNode, onDrop, onAddNode, 'move', {
+      nodeId: draggedId, targetParentId, targetIndex: index,
+    });
+    if (!incremental) {
+      renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+    }
     refreshTree();
   }
 
@@ -801,6 +845,9 @@ function renderEditor(root, project) {
         refreshTree();
         refreshInspector();
         toast('Page imported');
+        requestAnimationFrame(() => {
+          renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
+        });
       },
     });
   });

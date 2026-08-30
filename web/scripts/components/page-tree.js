@@ -457,7 +457,7 @@ export function renderTree(root, doc, selectedNodeId, selectedHeadIndex, callbac
     const row = items[idx]?.el;
     if (row) {
       row.classList.add('focused');
-      row.scrollIntoView({ block: 'nearest' });
+      row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
   }
 

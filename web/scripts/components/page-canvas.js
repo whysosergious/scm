@@ -276,10 +276,106 @@ export function renderCanvas(root, doc, selectedNodeId, onSelect, onDrop, onAddN
   updateSizeLabel(root);
 }
 
+// ================== INCREMENTAL UPDATE ==================
+
+/**
+ * Incrementally updates the iframe DOM for structural changes (add, remove, move)
+ * without rebuilding the entire document.  Falls back to returning false when
+ * the change is too complex (head change, element type change) so the caller
+ * can fall back to a full re-render.
+ *
+ * @param {Object} doc - Page document.
+ * @param {string|null} selectedNodeId - Currently selected node ID.
+ * @param {function(string): void} onSelect - Selection callback.
+ * @param {function(string, string, number): void} onDrop - Drop callback.
+ * @param {function(string, number, string): void} onAddNode - Add callback.
+ * @param {'add'|'remove'|'move'} action - The type of structural change.
+ * @param {Object} [detail] - Action-specific detail: { parentId, index, nodeId, targetParentId, targetIndex }.
+ * @returns {boolean} Whether the incremental update succeeded.
+ */
+export function updateIframeContent(doc, selectedNodeId, onSelect, onDrop, onAddNode, action, detail) {
+  const iframeDoc = getIframeDoc();
+  if (!iframeDoc || !iframeDoc.body) return false;
+
+  const body = iframeDoc.body;
+
+  if (action === 'remove') {
+    const dom = iframeDoc.querySelector(`[data-nid="${CSS.escape(detail.nodeId)}"]`);
+    if (dom) dom.remove();
+    return true;
+  }
+
+  if (action === 'add') {
+    const parentDom = detail.parentId === '__body__'
+      ? body
+      : iframeDoc.querySelector(`[data-nid="${CSS.escape(detail.parentId)}"]`);
+    if (!parentDom) return false;
+
+    const node = findNodeInDoc(doc, detail.nodeId);
+    if (!node) return false;
+
+    const tempContainer = ownerDoc(body).createElement('div');
+    renderNode(tempContainer, node, selectedNodeId, onSelect, onDrop, onAddNode);
+    const newDom = tempContainer.firstChild;
+    if (!newDom) return false;
+
+    if (detail.index != null && detail.index < parentDom.children.length) {
+      parentDom.children[detail.index].before(newDom);
+    } else {
+      parentDom.append(newDom);
+    }
+    return true;
+  }
+
+  if (action === 'move') {
+    const dom = iframeDoc.querySelector(`[data-nid="${CSS.escape(detail.nodeId)}"]`);
+    if (!dom) return false;
+
+    const oldParent = dom.parentElement;
+    const newParentDom = detail.targetParentId === '__body__'
+      ? body
+      : iframeDoc.querySelector(`[data-nid="${CSS.escape(detail.targetParentId)}"]`);
+    if (!newParentDom) return false;
+
+    // Find the node in the model to re-render it fresh
+    const node = findNodeInDoc(doc, detail.nodeId);
+    if (!node) return false;
+
+    // Remove from old location
+    dom.remove();
+
+    // Re-render at new location
+    const tempContainer = ownerDoc(body).createElement('div');
+    renderNode(tempContainer, node, selectedNodeId, onSelect, onDrop, onAddNode);
+    const newDom = tempContainer.firstChild;
+    if (!newDom) return false;
+
+    if (detail.targetIndex != null && detail.targetIndex < newParentDom.children.length) {
+      newParentDom.children[detail.targetIndex].before(newDom);
+    } else {
+      newParentDom.append(newDom);
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/** Find a node by id anywhere in the doc tree. */
+function findNodeInDoc(doc, id) {
+  if (!doc || !doc.root) return null;
+  return pm.findNode(doc.root, id);
+}
+
+/** Get the ownerDocument of a node (works across iframe boundaries). */
+function ownerDoc(node) {
+  return node.ownerDocument || document;
+}
+
 // ================== IFRAME CONTENT ==================
 
 /**
- * (Re)builds the page content inside the iframe.  Called on every re-render.
+ * (Re)builds the page content inside the iframe.  Called on full re-render.
  * The iframe document structure is rebuilt from scratch each time, which keeps
  * the code simple and avoids stale-reference bugs.
  */
@@ -829,11 +925,26 @@ function showElementPicker(canvasRoot, mouseEvent, doc, onSelect) {
     });
     item.addEventListener('mouseleave', () => { domEl.classList.remove('canvas-picker-highlight'); });
 
-    // Click — select the node (or body)
+    // Click — select the node (or body).  For non-page-node elements, walk
+    // up the ancestry to find the nearest canvas-page-node ancestor.
     item.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (treeNode) onSelect(treeNode.id);
-      else if (domEl.tagName === 'BODY') onSelect('__body__');
+      if (treeNode) {
+        onSelect(treeNode.id);
+      } else if (domEl.tagName === 'BODY') {
+        onSelect('__body__');
+      } else {
+        // Find closest page-node ancestor in the collected ancestry
+        const idx = ancestry.indexOf(domEl);
+        for (let i = idx + 1; i < ancestry.length; i++) {
+          if (ancestry[i].classList && ancestry[i].classList.contains('canvas-page-node') && ancestry[i].dataset.nid) {
+            onSelect(ancestry[i].dataset.nid);
+            closeElementPicker(canvasRoot);
+            return;
+          }
+        }
+        onSelect('__body__');
+      }
       closeElementPicker(canvasRoot);
     });
     picker.append(item);
