@@ -713,10 +713,11 @@ function renderEditor(root, project) {
 
   /** Add a child to a specific node (from tree "+" button). Prompts with a simple type choice. */
   function onAddToNode(parentId) {
-    const type = prompt('Component type (box, text, image):', 'box');
+    const type = prompt('Component type (box, text, image) or type:element (e.g. box:svg, text:a):', 'box');
     if (!type) return;
     const t = type.trim().toLowerCase();
-    if (!['box', 'text', 'image'].includes(t)) { toast('Invalid type', 'error'); return; }
+    const base = t.includes(':') ? t.split(':')[0] : t;
+    if (!['box', 'text', 'image'].includes(base)) { toast('Invalid type', 'error'); return; }
     onAddNode(parentId, undefined, t);
   }
 

@@ -63,7 +63,6 @@ scm/
 ├── scm-config.json         # live configuration (created/edited via panel)
 ├── .env                    # HOST/PORT (copy .env.template)
 ├── spec.md                 # this document
-├── spec_page_editor.md     # page editor specification (authoritative for §19)
 ├── src/
 │   ├── main.rs             # startup only: dotenv → load config → serve
 │   ├── config.rs           # types + load/validate/atomic-save scm-config.json
@@ -486,35 +485,255 @@ The ProseMirror "insert image (upload)" button uploads into `media_dir` through 
 
 ## 19. Page editing
 
-SCM provides a visual page editor for building static HTML pages from structured components. The full specification lives in `spec_page_editor.md` — read it before adding features.
+SCM provides a visual page editor for building static HTML pages from structured components.
 
-### 19.1 Summary
+### 19.1 Purpose and scope
 
-The page editor lets users build pages from Box, Text, and Image components, arrange them through drag and drop with enforced HTML nesting rules, edit content and CSS properties, assign reusable classes, and generate static HTML files for deployment.
+The editor operates on the currently selected project, using its content directory, media directory, pages directory, and publish path. It must use existing project/path resolution — no second config system.
 
-### 19.2 Storage
+Must support: page list, index page (non-deletable), create/delete pages, visual canvas with tree, add/nest/reorder components, drag-and-drop, select and edit properties/CSS, reusable classes, save JSON, generate HTML, preview, import HTML.
 
-Pages live in a `pages/` directory relative to the target project repository root (not configurable in v1). Both page JSON source files and generated HTML output are committed to the target repository.
+Not in scope: content schemas, raw HTML components, responsive breakpoints, animations, forms, auth, collaboration.
+
+### 19.2 Technology
+
+**Backend:** Rust, Tokio, Actix Web. No actors. Blocking work through Tokio blocking facilities. HTML import uses `html5ever`.
+
+**Frontend:** HTML, CSS, vanilla JS, ES modules, custom elements. No framework, no bundler, no npm. Regular DOM (Shadow DOM only when encapsulation is needed).
+
+### 19.3 Storage
+
+Pages live under `project/pages/`. JSON is source of truth; HTML is generated output.
 
 ```text
-pages/index.json   →   index.html
-pages/contact.json →   pages/contact.html
+pages/index.json   → project/index.html
+pages/contact.json → project/pages/contact.html
 ```
 
-### 19.3 Key rules
+The sidebar has a **Pages** list separate from the generic **Content** list. Both page JSON source files and generated HTML are committed to the target repository.
 
-- The sidebar has a **Pages** list separate from the generic **Content** list.
-- `index.json` is non-deletable and maps to the project root.
+### 19.4 Page discovery
+
+Scans direct `.json` children of `pages/`. No recursion in v1. Selection stored in localStorage.
+
+### 19.5 Index page
+
+`index.json` maps to root `index.html`. Non-deletable, auto-created if missing.
+
+### 19.6 Document model
+
+```json
+{
+  "version": 1,
+  "title": "Home",
+  "meta": { "description": "", "og_image": "" },
+  "head": [
+    { "type": "stylesheet", "href": "/css/main.css" },
+    { "type": "style", "css": ".hero { padding: 4rem; }" },
+    { "type": "meta", "name": "author", "content": "Jane" },
+    { "type": "script", "src": "/js/app.js", "defer": true }
+  ],
+  "classes": [],
+  "root": {
+    "id": "root", "type": "box",
+    "props": { "element": "main" },
+    "styles": {}, "classes": [], "children": []
+  }
+}
+```
+
+Node fields: `id` (unique), `type` (`box`|`text`|`image`), `props`, `styles`, `classes`, `children`. Unknown properties preserved on load/save.
+
+### 19.7 Components
+
+**Box:** Groups children. Element options: `div`, `section`, `header`, `main`, `footer`, `article`, `aside`, `nav`, `svg`, `video`, `audio`, plus all standard HTML elements. Default: `div`.
+
+**Text:** Display text. Element options: `p`, `h1`–`h6`, `span`, `blockquote`, `a`, `button`, `li`, plus all standard inline/phrasing elements. Text escaped during generation.
+
+**Image:** `src` (media-relative), `alt` (required), optional title/width/height/loading.
+
+**SVG:** Stored as box with `element: svg` and `innerHTML` containing the full `<svg>...</svg>` markup (preserved via XMLSerializer). Rendered in canvas via namespace-aware creation.
+
+**Nesting rules:**
+
+| Parent | Allowed children |
+|---|---|
+| Flow container (`div`, `section`, etc.) | Box, Text(`span`), Image, SVG |
+| Phrasing container (`p`, `h1`–`h3`, `blockquote`) | Text(`span`) only |
+| Inline (`span`, `a`) | Text(`span`) only |
+| SVG | Leaf (no child nodes) |
+| Image | No children |
+
+Cycle guard: a node cannot be dropped inside itself or descendants. Invalid drops rejected with visual indicator.
+
+### 19.8 Head elements
+
+The `head` array stores elements for `<head>`. Types: `stylesheet` (href, media), `style` (css), `meta` (name/property/charset + content), `script` (src or js, defer/async). Order preserved; emitted as-is during generation.
+
+Legacy `meta.description`/`meta.og_image` generate corresponding meta tags; deduplicated against `head` entries.
+
+### 19.9 Visual editor layout
+
+```text
+┌──────────────────────────────────────────────────┐
+│ Toolbar                                          │
+├────────────┬──────────┬──────────────┬───────────┤
+│ Palette    │ Tree     │ Canvas       │ Inspector │
+│            │ <head>   │ (iframe)     │           │
+│ Box        │ <body>   │              │ selected  │
+│ Text       │  tree    │              │ element   │
+│ Image      │          │              │ props     │
+│ SVG        │          │              │           │
+└────────────┴──────────┴──────────────┴───────────┘
+```
+
+Canvas: same-origin `<iframe>` for full HTML document isolation. Transparent overlay in parent handles all interaction via coordinate-mapped hit-testing. Pointer events for drag-and-drop across iframe boundary.
+
+Inspector: node inspector (type, ID, element selector, content/src/alt fields, CSS properties, assigned classes, class management), body inspector (body classes/styles/attrs), head inspector (type-specific fields per §19.8). SVG nodes show a CodeMirror markup editor.
+
+### 19.10 Drag and drop
+
+Pointer events (not HTML DnD API) for cross-frame support. Palette→canvas drag, canvas reorder, nesting enforcement per §19.7. Drop indicators at valid positions only. Collapsed containers auto-expand on hover during drag.
+
+### 19.11 Styling
+
+Inline styles + reusable class assignments. Extensible CSS property list. Classes defined in document `classes` array with name, label, description, styles.
+
+### 19.12 HTML generation
+
+Recursive tree rendering. Escapes text/attributes. Generates valid nesting, assigned classes, inline styles, class CSS. Head elements emitted in order. Output mapped by filename (`index.json` → root, others → `pages/`).
+
+### 19.13 HTML import
+
+Converts external HTML pages into a `PageDocument` entirely on the client side.
+
+#### Parsing strategy
+
+The parser inserts the imported HTML into a hidden same-origin iframe (`sandbox="allow-same-origin"` — blocks scripts, allows CSS), writes the HTML via `document.open()`/`write()`/`close()`, listens for the `load` event, then waits one animation frame for styles to compute. For URL imports, a `<base href>` is injected for the original URL so relative paths resolve.
+
+#### Head collection
+
+Before walking the body, extract from `iframe.contentDocument.head`:
+
+| Source element | HeadElement mapping |
+|---|---|
+| `<link rel="stylesheet">` | `{ type: 'stylesheet', href, media }` |
+| `<style>` | `{ type: 'style', css: textContent }` |
+| `<meta name="...">` | `{ type: 'meta', name, content }` |
+| `<meta property="...">` | `{ type: 'meta', property, content }` |
+| `<meta charset="...">` | `{ type: 'meta', charset }` |
+| `<script src="...">` | `{ type: 'script', src, defer, async }` |
+| `<script>...</script>` | `{ type: 'script', js: textContent }` |
+| `<title>` | Sets `doc.title` |
+
+Cross-origin `<link>` elements are reported as warnings.
+
+#### Element mapping
+
+| HTML element | PageNode type | Element |
+|---|---|---|
+| `div`, `section`, `main`, `header`, `footer`, `article`, `aside`, `nav` | box | same tag |
+| `ul`, `ol`, `li` | box | same tag |
+| `p`, `h1`–`h6`, `span`, `blockquote`, `a`, `button` | text | same tag |
+| `img` | image | — |
+| `video`, `audio` | box | same tag |
+| `svg` | box | `svg` (innerHTML via XMLSerializer) |
+| `br` | box | `br` |
+| `hr` | box | `div` |
+| `table`, `form`, `input`, `select`, `textarea`, `iframe`, `script`, `style`, `noscript` | — | skip, report |
+| Unknown custom elements | box or text | depends on children |
+| Unknown non-void elements | box | same tag |
+
+#### Node processing
+
+1. **ID**: use element's `id` if valid (alphanumeric + hyphens), otherwise generate `nN`.
+2. **Inline styles**: extract from `style` attribute into `node.styles`.
+3. **Computed styles**: diff against browser defaults and parent inherited values; merge shorthand properties; skip properties already in inline styles.
+4. **Attributes**: extract `href`, `target`, `src`, `alt`, `controls`, `autoplay`, `loop`, `muted`, `poster`, `width`, `height`, `loading`, `rel`. Skip `class`, `id`, `style`.
+5. **Classes**: split `class` on whitespace → `node.classes`.
+6. **Children**: recurse into child elements.
+
+#### CSS extraction
+
+Only import properties the editor supports: `display`, `position`, `top/right/bottom/left`, `z-index`, `width`, `height`, `min/max-width/height`, `margin`, `padding`, `background-*`, `color`, `font-*`, `line-height`, `text-align`, `text-decoration`, `border`, `border-radius`, `box-shadow`, `flex-*`, `justify-content`, `align-items`, `grid-template-columns`, `opacity`, `overflow`, `cursor`. Unsupported properties are reported as warnings.
+
+Shorthand merging: if all longhand properties of a shorthand share the same value, replace with the shorthand (e.g. `margin-top/right/bottom/left: 1rem` → `margin: 1rem`).
+
+#### Text handling
+
+Whitespace-only text nodes between block elements are discarded. Text inside supported text elements becomes the `value` prop. Text-only box children are wrapped in child Text nodes.
+
+#### Whitespace normalization
+
+`mergeWhitespaceNodes()` post-processes box children: whitespace-only text normalized to single space, merged into adjacent text siblings, dropped around block elements. `&nbsp;` (`\u00A0`) normalized to space.
+
+#### Import report
+
+```text
+{ warnings: string[], errors: string[], stats: { total, boxes, texts, images } }
+```
+
+Categories: `[unsupported element]`, `[unsupported attribute]`, `[unsupported style]`, `[cross-origin stylesheet]`, `[fragment]`.
+
+#### Image resolution
+
+All `img[src]` values are resolved against the iframe's `<base href>`. The integration layer converts to project-relative media paths before saving.
+
+### 19.14 Import modal
+
+Three-tab dialog: **Paste** (textarea), **Upload** (file input, `.html`/`.htm`), **From URL** (text input + Fetch button).
+
+```text
+┌─ Import HTML ──────────────────────────────────┐
+│  [Paste] [Upload] [From URL]                   │
+│  ┌─ tab content ──────────────────────────────┐│
+│  │ (textarea / file input / url input)         ││
+│  └────────────────────────────────────────────┘│
+│  ┌─ preview ─────────────────────────────────┐  │
+│  │ 12 boxes, 34 texts, 5 images              │  │
+│  │ 3 warnings: [unsupported element] <table>  │  │
+│  └───────────────────────────────────────────┘  │
+│  Page title: [_______________]                  │
+│              [Cancel]  [Import]                 │
+└─────────────────────────────────────────────────┘
+```
+
+Behavior: debounced parse (200ms) on input; preview shows stats and warnings; Import returns `PageDocument` to page editor (dirty confirmation if needed); empty input disables Import; >5MB warns but allows; network errors show toast.
+
+### 19.15 Media integration
+
+Image component integrates with existing media manager (§18). Source stored as website-relative path.
+
+### 19.16 Save, generate, and preview
+
+Save writes JSON. Generate creates HTML. Preview serves generated HTML. Publish is separate Git operation. Unsaved-changes indicator.
+
+### 19.17 API
+
+Pages CRUD under `/api/projects/{id}/pages`. Generation, import, preview endpoints. Reuses media and git/status endpoints. Backend validates before saving. Frontend manages in-memory tree.
+
+### 19.18 Safety
+
+No path traversal, no filesystem access through paths, no raw HTML injection, atomic writes, no writing outside project. No deleting `index.json`.
+
+### 19.19 Key rules
+
 - Page documents are structured JSON trees, not arbitrary HTML.
 - Nesting is enforced: a `div` cannot be dropped inside a `p`; a `span` can be inside a `p`.
 - The visual editor canvas renders nodes close to their generated output.
 - Generated HTML contains real content without requiring JavaScript.
 - The page editor and the JSON content editor are completely separate editors that share no code paths.
 
-### 19.4 Acceptance criteria
+### 19.20 Acceptance criteria
 
-See `spec_page_editor.md` §25 for the full list.
-
-### 19.5 Technology
-
-Backend: Rust, Tokio, Actix Web, no actors. HTML import uses `html5ever`. Frontend: vanilla JS, ES modules, no framework/bundler. The full technology stack is specified in `spec_page_editor.md` §5.
+1. User can select a project and open the page editor.
+2. Page list shows all pages; index.json is non-deletable.
+3. Components can be added, nested, and reordered via drag-and-drop.
+4. Nesting rules are enforced with visual indicators.
+5. Node properties, CSS, and classes can be edited through the inspector.
+6. Reusable classes can be defined and assigned.
+7. Page JSON is saved and can be generated to static HTML.
+8. HTML import preserves structure with warnings for unsupported content.
+9. Head elements can be managed (stylesheets, scripts, meta).
+10. SVG components render correctly in canvas.
+11. Generated pages publish through the existing Git workflow.

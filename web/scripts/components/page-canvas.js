@@ -12,7 +12,7 @@ import {
   initIframe, getIframe, getIframeDoc, setViewportElement,
   parentToIframeCoords, iframeElementFromPoint, findPageNode,
   startDragTracking, updateDragTracking, isDragActive, endDrag,
-  setZoomScale, getZoom, dragState,
+  setZoomScale, getZoom, dragState, resetIframeDoc,
 } from './canvas-iframe.js';
 import { setFrameVisible } from './page-boxmodel.js';
 
@@ -316,7 +316,16 @@ function rebuildIframeContent(doc, selectedNodeId, onSelect, onDrop, onAddNode, 
           headExtras += `<meta http-equiv="${he.httpEquiv}" content="${he.content}">\n`;
         }
       } else if (he.type === 'script') {
-        scriptsToInject.push(he);
+        if (he.src) {
+          // External scripts go in <head> during document.write() so they
+          // execute before the load event (e.g. Tailwind CDN scans on load).
+          const media = he.media ? ` media="${he.media}"` : '';
+          const defer = he.defer ? ' defer' : '';
+          const async = he.async ? ' async' : '';
+          headExtras += `<script src="${he.src}"${media}${defer}${async}></script>\n`;
+        } else {
+          scriptsToInject.push(he);
+        }
       }
     }
   }
@@ -332,6 +341,8 @@ function rebuildIframeContent(doc, selectedNodeId, onSelect, onDrop, onAddNode, 
   }
 
   // Write the document skeleton (no <script> tags — they block the parser)
+  // open() replaces the document — invalidate cached ref, re-acquire after write/close
+  resetIframeDoc();
   iframeDoc.open();
   iframeDoc.write(`<!DOCTYPE html>
 <html>
@@ -348,16 +359,21 @@ ${headExtras}
 </html>`);
   iframeDoc.close();
 
+  // Re-acquire document after open()/close() — the old reference may be stale
+  const freshDoc = getIframeDoc();
+  const body = freshDoc ? freshDoc.body : iframeDoc.body;
+  if (!body) return;
+
   // Render root's children directly into <body> (root is a model container, not a DOM element)
   if (!doc.root || !doc.root.children) return;
   for (const child of doc.root.children) {
-    renderNode(iframeDoc.body, child, selectedNodeId, onSelect, onDrop, onAddNode);
+    renderNode(body, child, selectedNodeId, onSelect, onDrop, onAddNode);
   }
 
   // Inject scripts AFTER body content so getElementById etc. find their targets
-  if (iframeDoc.head) {
+  if (freshDoc && freshDoc.head) {
     for (const he of scriptsToInject) {
-      const s = iframeDoc.createElement('script');
+      const s = freshDoc.createElement('script');
       if (he.src) {
         s.src = he.src;
         if (he.defer) s.defer = true;
@@ -365,7 +381,7 @@ ${headExtras}
       } else if (he.js) {
         s.textContent = he.js;
       }
-      iframeDoc.head.appendChild(s);
+      freshDoc.head.appendChild(s);
     }
   }
 }

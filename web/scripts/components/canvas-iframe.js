@@ -34,6 +34,14 @@ export function getIframeDoc() {
 }
 
 /**
+ * Invalidate the cached iframe document reference.
+ * Must be called before iframeDoc.open() since open() replaces the document.
+ */
+export function resetIframeDoc() {
+  _iframeDoc = null;
+}
+
+/**
  * Initialise the iframe inside a parent element. Call once when the canvas is
  * first built. Returns the iframe element for layout insertion.
  *
