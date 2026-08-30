@@ -32,7 +32,12 @@ const EDITOR_CANVAS_CSS = `
   cursor: pointer;
 }
 svg.canvas-page-node {
-  pointer-events: bounding-box;
+  pointer-events: all;
+  min-height: auto;
+  outline-style: solid;
+}
+svg.canvas-page-node * {
+  pointer-events: all;
 }
 .canvas-page-node.canvas-hovered {
   outline-color: rgba(66, 133, 244, 0.25);
@@ -636,6 +641,9 @@ function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
         }
         // Re-apply node attrs (may override source attrs)
         applyAttrs(tag, node);
+        // Re-apply editor class and model classes (SVG attribute copy overwrites them)
+        tag.setAttribute('class', 'canvas-page-node');
+        applyClasses(tag, node);
         // Copy parsed children into our SVG element
         while (svg.firstChild) tag.appendChild(svg.firstChild);
       }
@@ -644,7 +652,7 @@ function renderBox(parent, node, selectedId, onSelect, onDrop, onAddNode) {
     }
   } else if (node.children && node.children.length > 0) {
     for (const child of node.children) renderNode(tag, child, selectedId, onSelect, onDrop, onAddNode);
-  } else if (_showEmpty) {
+  } else if (_showEmpty && !isSvg) {
     tag.classList.add('canvas-empty-box');
   }
 
@@ -861,7 +869,7 @@ export function patchNode(nodeId, node, selectedId) {
   applyStyles(dom, node);
 
   // ── Classes ──
-  dom.className = 'canvas-page-node';
+  dom.setAttribute('class', 'canvas-page-node');
   applyClasses(dom, node);
   dom.classList.toggle('selected', node.id === selectedId);
 
@@ -904,6 +912,10 @@ export function patchNode(nodeId, node, selectedId) {
             dom.setAttribute(attr.name, attr.value);
           }
           applyAttrs(dom, node);
+          // Re-apply editor class and selection (SVG attribute copy overwrites them)
+          dom.setAttribute('class', 'canvas-page-node');
+          applyClasses(dom, node);
+          dom.classList.toggle('selected', node.id === selectedId);
           // Move children
           while (svg.firstChild) dom.appendChild(svg.firstChild);
         }

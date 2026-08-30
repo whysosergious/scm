@@ -237,6 +237,67 @@ function resolveBoxElement(tag, el) {
 }
 
 /**
+ * Post-process a box node's children to merge whitespace-only text nodes
+ * into adjacent text siblings.  This avoids creating unnecessary <span>
+ * nodes for formatting indentation while preserving spaces that are
+ * significant for inline rendering (e.g. between two <span> elements).
+ *
+ * - Whitespace-only text nodes are normalized to a single space ' '
+ * - Adjacent text nodes are concatenated
+ * - Remaining standalone ' ' text nodes between non-text elements are dropped
+ *   (formatting whitespace around blocks is not rendered)
+ *
+ * @param {Array} children
+ */
+function mergeWhitespaceNodes(children) {
+  // 1. Normalize whitespace-only text nodes to single space
+  for (const child of children) {
+    if (child.type === 'text' && child.props && child.props.value != null) {
+      const v = child.props.value;
+      if (v && !v.trim()) {
+        child.props.value = ' ';
+      }
+    }
+  }
+
+  // 2. Drop standalone space-only text nodes adjacent to box (block) nodes —
+  //    these are formatting whitespace around blocks, not rendered.
+  for (let i = children.length - 1; i >= 0; i--) {
+    const child = children[i];
+    if (child.type === 'text' && child.props && child.props.value === ' ') {
+      const prev = i > 0 ? children[i - 1] : null;
+      const next = i < children.length - 1 ? children[i + 1] : null;
+      const prevIsBox = prev && prev.type !== 'text';
+      const nextIsBox = next && next.type !== 'text';
+      if (prevIsBox || nextIsBox) {
+        children.splice(i, 1);
+      }
+    }
+  }
+
+  // 3. Absorb remaining ' ' text nodes into adjacent text siblings.
+  //    Only merge space-only nodes — never merge two content text nodes
+  //    (they may carry different classes/styles from separate elements).
+  for (let i = children.length - 1; i >= 0; i--) {
+    const child = children[i];
+    if (child.type === 'text' && child.props && child.props.value === ' ') {
+      const prev = i > 0 ? children[i - 1] : null;
+      const next = i < children.length - 1 ? children[i + 1] : null;
+      if (prev && prev.type === 'text' && prev.props.value !== ' ') {
+        prev.props.value += ' ';
+        children.splice(i, 1);
+      } else if (next && next.type === 'text' && next.props.value !== ' ') {
+        next.props.value = ' ' + next.props.value;
+        children.splice(i, 1);
+      } else {
+        // No content text neighbor — drop the orphan space
+        children.splice(i, 1);
+      }
+    }
+  }
+}
+
+/**
  * Walk the DOM tree and convert to a PageNode tree.
  *
  * Element-with-element-children → box (preserves nested structure, e.g.
@@ -253,7 +314,6 @@ function walkNode(domNode, ctx) {
   // Text node → span Text node (only meaningful as a child of a box).
   if (domNode.nodeType === Node.TEXT_NODE) {
     const text = domNode.textContent || '';
-    if (!text.trim()) return null; // drop whitespace-only (formatting / insignificant)
     return makeTextNode(text);
   }
 
@@ -380,6 +440,9 @@ function walkNode(domNode, ctx) {
       const childNode = walkNode(child, ctx);
       if (childNode) node.children.push(childNode);
     }
+    // Merge whitespace-only text nodes into adjacent text siblings
+    // so formatting newlines/spaces don't create unnecessary span nodes.
+    mergeWhitespaceNodes(node.children);
   }
 
   ctx.report.stats.total++;

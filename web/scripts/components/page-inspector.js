@@ -241,13 +241,13 @@ export function renderInspector(root, doc, selectedNodeId, onChange) {
       import('../vendor/code-editor.bundle.js').then(() => {
         const editor = document.createElement('code-editor');
         editor.setAttribute('language', 'html');
+        editor.setAttribute('value', svgValue);
         editor.style.height = '200px';
-        editor.value = svgValue;
+        editorContainer.append(editor);
         editor.addEventListener('input', () => {
           node.props.innerHTML = editor.value;
           onChange();
         });
-        editorContainer.append(editor);
       }).catch(() => {
         // Fallback: plain textarea
         const ta = el('textarea', {
