@@ -568,7 +568,7 @@ function renderEditor(root, project) {
   function refreshTree() {
     if (!doc) return;
     renderTree(treeContent, doc, selectedNodeId, selectedHeadIndex, {
-      onSelectNode: selectNode,
+      onSelectNode: (id) => selectNode(id, true),
       onSelectHead: selectHead,
       onAddHead,
       onRemoveHead,
@@ -591,7 +591,7 @@ function renderEditor(root, project) {
   }
 
   /** Select a body tree node. Clears head selection. */
-  function selectNode(id) {
+  function selectNode(id, fromTree) {
     selectedNodeId = id;
     selectedHeadIndex = null;
     refreshInspector();
@@ -620,8 +620,8 @@ function renderEditor(root, project) {
         iframeDoc.body.classList.toggle('selected', id === '__body__');
       }
     }
-    // Scroll canvas viewport to show the selected node
-    if (id) {
+    // Scroll canvas viewport to show the selected node (only from tree selection)
+    if (fromTree && id) {
       requestAnimationFrame(() => scrollCanvasToNode(canvasEl, id));
     }
     // Box model control — defer to let canvas layout settle
@@ -844,14 +844,14 @@ function renderEditor(root, project) {
       onImport({ doc: importedDoc }) {
         doc = importedDoc;
         dirty = true;
+        // Clear canvas to force a full re-render (avoids stale iframe state)
+        canvasEl.textContent = '';
         renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
         wireCanvasControls();
+        applyZoom();
         refreshTree();
         refreshInspector();
         toast('Page imported');
-        requestAnimationFrame(() => {
-          renderCanvas(canvasEl, doc, selectedNodeId, selectNode, onDrop, onAddNode);
-        });
       },
     });
   });

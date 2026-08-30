@@ -147,7 +147,8 @@ export function findPageNode(el) {
  *   nodeId: string|null,
  *   componentType: string|null,
  *   originX: number,
- *   originY: number
+ *   originY: number,
+ *   startTime: number
  * }}
  */
 export const dragState = {
@@ -156,10 +157,14 @@ export const dragState = {
   componentType: null,
   originX: 0,
   originY: 0,
+  startTime: 0,
 };
 
 /** Distance (px) before a pointer-down is promoted to a drag. */
 const DRAG_THRESHOLD = 4;
+
+/** Time (ms) that must elapse before a pointer-down is promoted to a drag. */
+const DRAG_DELAY = 200;
 
 /**
  * Start tracking a potential drag from a palette pointerdown.
@@ -174,17 +179,23 @@ export function startDragTracking(componentType, nodeId, x, y) {
   dragState.nodeId = nodeId;
   dragState.originX = x;
   dragState.originY = y;
+  dragState.startTime = Date.now();
+  _wasDragged = false;
 }
 
 /**
  * Call on every pointermove while tracking a potential drag.
  * Returns true once the drag threshold is crossed (first time only).
+ * Requires both sufficient time (DRAG_DELAY) and distance (DRAG_THRESHOLD)
+ * so that normal clicks are not treated as drags.
  * @param {number} x - clientX.
  * @param {number} y - clientY.
  * @returns {boolean}
  */
 export function updateDragTracking(x, y) {
   if (dragState.active) return false;
+  const elapsed = Date.now() - dragState.startTime;
+  if (elapsed < DRAG_DELAY) return false;
   const dx = x - dragState.originX;
   const dy = y - dragState.originY;
   if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
@@ -201,7 +212,17 @@ export function isDragActive() {
 
 /** Reset drag state. */
 export function endDrag() {
+  if (dragState.active) _wasDragged = true;
   dragState.active = false;
   dragState.nodeId = null;
   dragState.componentType = null;
 }
+
+/** @type {boolean} Set when a drag completes; checked by palette click handler. */
+let _wasDragged = false;
+
+/** Returns true if a drag gesture just completed (check then clear). */
+export function wasDragged() { return _wasDragged; }
+
+/** Clear the wasDragged flag (call after checking). */
+export function clearDragged() { _wasDragged = false; }

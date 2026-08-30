@@ -292,22 +292,21 @@ export function scrollCanvasToNode(canvasRoot, nodeId) {
   const dom = iframeDoc.querySelector(`[data-nid="${CSS.escape(nodeId)}"]`);
   if (!dom) return;
 
+  // Scroll the iframe document to bring the node into view
+  dom.scrollIntoView({ block: 'center', behavior: 'smooth' });
+
+  // Also ensure the outer scroll container shows the viewport
   const scroll = canvasRoot.querySelector('.canvas-viewport-scroll');
-  if (!scroll) return;
-
-  const zoom = getZoom();
-  const nodeRect = dom.getBoundingClientRect();
-  const scrollRect = scroll.getBoundingClientRect();
-
-  // Node visual bounds relative to the scroll container's content area
-  const nodeTop = nodeRect.top - scrollRect.top + scroll.scrollTop;
-  const nodeBot = nodeRect.bottom - scrollRect.top + scroll.scrollTop;
-  const nodeMid = (nodeTop + nodeBot) / 2;
-  const viewMid = scroll.scrollTop + scroll.clientHeight / 2;
-
-  if (nodeTop >= scroll.scrollTop && nodeBot <= scroll.scrollTop + scroll.clientHeight) return;
-
-  scroll.scrollTo({ top: nodeMid - scroll.clientHeight / 2, behavior: 'smooth' });
+  if (scroll) {
+    const iframe = canvasRoot.querySelector('iframe');
+    if (iframe) {
+      const iRect = iframe.getBoundingClientRect();
+      const sRect = scroll.getBoundingClientRect();
+      if (iRect.bottom > sRect.bottom || iRect.top < sRect.top) {
+        iframe.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+  }
 }
 
 // ================== INCREMENTAL UPDATE ==================
@@ -597,7 +596,8 @@ function wireOverlayInteractions(overlay, canvasRoot, doc, onSelect, onDrop, onA
   });
 
   document.addEventListener('pointermove', (e) => {
-    if (!dragState.active && !isDragActive()) return;
+    // Bail if no drag is being tracked (neither palette nor canvas node)
+    if (!dragState.componentType && !dragState.nodeId) return;
 
     if (!isDragActive()) {
       const started = updateDragTracking(e.clientX, e.clientY);
@@ -625,7 +625,11 @@ function wireOverlayInteractions(overlay, canvasRoot, doc, onSelect, onDrop, onA
   });
 
   document.addEventListener('pointerup', (e) => {
-    if (!isDragActive()) return;
+    if (!isDragActive()) {
+      // Drag never activated — clean up stale tracking state left by pointerdown
+      endDrag();
+      return;
+    }
     const st = dragState;
     const target = findDropTarget(e);
 

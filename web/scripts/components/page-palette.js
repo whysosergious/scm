@@ -7,7 +7,7 @@
 // the iframe canvas boundary.  The drag state is managed by canvas-iframe.js.
 
 import { el, icon } from '../dom.js';
-import { startDragTracking } from './canvas-iframe.js';
+import { startDragTracking, wasDragged, clearDragged } from './canvas-iframe.js';
 
 /**
  * @typedef {Object} ComponentDef
@@ -98,7 +98,7 @@ function createItem(comp, onAdd) {
 
   // Click-to-add (fires when no drag occurred)
   item.addEventListener('click', (e) => {
-    // Only fire if the pointer didn't move (not a drag)
+    if (wasDragged()) { clearDragged(); return; }
     onAdd(comp.type);
   });
 
